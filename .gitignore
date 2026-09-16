@@ -1,0 +1,15 @@
+node_modules/
+contract/src/managed/
+contract/managed/
+contract/dist/
+ui/public/zkconfig/
+ui/dist/
+logs/
+*.log
+.env
+.env.*
+!.env.example
+pilot-events.jsonl
+pilot-metrics.json
+pilot-load-events.jsonl
+pilot-load-metrics.json

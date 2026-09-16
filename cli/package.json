@@ -1,0 +1,46 @@
+{
+  "name": "@proofperks/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ProofPerks compile, deploy, and interaction CLI workspace.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuryaXyz-art/Proofperks.git",
+    "directory": "cli"
+  },
+  "bugs": {
+    "url": "https://github.com/SuryaXyz-art/Proofperks/issues"
+  },
+  "homepage": "https://github.com/SuryaXyz-art/Proofperks#readme",
+  "scripts": {
+    "compile": "node src/compile.mjs",
+    "deploy": "node src/deploy.mjs",
+    "deploy:preprod": "node --experimental-strip-types src/preprod-deploy.ts",
+    "interact": "node src/interact.mjs",
+    "demo": "node --experimental-strip-types demo.ts",
+    "pilot:load": "node load-test.mjs",
+    "pilot:export": "node export-pilot-metrics.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/midnight-js": "4.1.1",
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/midnight-js-fetch-zk-config-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "4.1.1",
+    "@midnight-ntwrk/testkit-js": "4.1.1",
+    "@midnight-ntwrk/wallet-sdk-address-format": "3.1.2",
+    "@midnight-ntwrk/wallet-sdk-dust-wallet": "4.2.0",
+    "@midnight-ntwrk/wallet-sdk-facade": "4.1.0",
+    "@midnight-ntwrk/wallet-sdk-hd": "3.0.3",
+    "@midnight-ntwrk/wallet-sdk-shielded": "3.0.2",
+    "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "3.1.0",
+    "rxjs": "7.8.2"
+  }
+}

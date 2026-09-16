@@ -1,0 +1,32 @@
+{
+  "name": "proofperks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ProofPerks — a Midnight Network Compact dApp scaffold.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuryaXyz-art/Proofperks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SuryaXyz-art/Proofperks/issues"
+  },
+  "homepage": "https://github.com/SuryaXyz-art/Proofperks#readme",
+  "workspaces": [
+    "contract",
+    "cli",
+    "ui"
+  ],
+  "scripts": {
+    "compile": "npm run compile --workspace @proofperks/contract && npm run build --workspace @proofperks/contract",
+    "test": "npm run test --workspaces --if-present",
+    "demo": "npm run demo --workspace @proofperks/cli",
+    "pilot:load": "node cli/load-test.mjs",
+    "pilot:export": "node cli/export-pilot-metrics.mjs",
+    "deploy:preprod": "npm run compile && npm run deploy:preprod --workspace @proofperks/cli",
+    "build:ui": "npm run compile && npm run build --workspace @proofperks/ui"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

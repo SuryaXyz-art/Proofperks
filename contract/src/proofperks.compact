@@ -1,0 +1,318 @@
+// SPDX-License-Identifier: Apache-2.0
+
+// ProofPerks: one-campaign private reward claims.
+//
+// Design references:
+// https://docs.midnight.network/concepts/how-midnight-works/keeping-data-private
+// https://docs.midnight.network/compact/data-types/ledger-adt
+//
+// Every value derived from a witness remains private unless it is explicitly
+// wrapped in disclose(...).
+
+// Compact toolchain 0.31.x targets the current Preprod ledger.
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+// Public configuration for the single campaign.
+struct Campaign {
+  id: Field;
+  thresholdPoints: Uint<64>;
+  active: Boolean;
+}
+
+// The hash preimage for an approved contribution. The secret and points are
+// supplied by a private witness callback; only the resulting hash is inserted
+// into the public commitments tree.
+struct ContributionPreimage {
+  domain: Bytes<32>;
+  contributorAnchor: Bytes<32>;
+  contributorSecret: Bytes<32>;
+  points: Uint<64>;
+  campaignId: Field;
+}
+
+// Separate domain from the commitment hash so a nullifier cannot be confused
+// with an approved commitment for the same underlying secret.
+struct NullifierPreimage {
+  domain: Bytes<32>;
+  campaignId: Field;
+  contributorSecret: Bytes<32>;
+}
+
+// A separate public marker for revocation. It is intentionally different
+// from both the commitment and claim nullifier domains so observers cannot
+// correlate a revoked marker with an approved leaf or a claim marker.
+struct RevocationPreimage {
+  domain: Bytes<32>;
+  campaignId: Field;
+  contributorSecret: Bytes<32>;
+}
+
+struct ContributorNullifierPreimage {
+  domain: Bytes<32>;
+  campaignId: Field;
+  contributorAnchor: Bytes<32>;
+}
+
+// Witnesses are implemented by the DApp/CLI and are never stored on chain.
+witness issuerSecret(): Bytes<32>;
+witness approvedContributorSecret(): Bytes<32>;
+witness approvedContributorAnchor(): Bytes<32>;
+witness approvedPoints(): Uint<64>;
+witness contributorAnchor(): Bytes<32>;
+witness contributorSecret(): Bytes<32>;
+witness contributorPoints(): Uint<64>;
+witness revocationTargetSecret(): Bytes<32>;
+witness oldContributorAnchor(): Bytes<32>;
+witness oldContributorSecret(): Bytes<32>;
+
+// The DApp supplies a path for the leaf it is proving. The path leaf equality
+// assertion in claim_reward is required to bind this witness to the derived
+// commitment rather than to an arbitrary leaf in the tree.
+witness findCommitmentPath(
+  commitment: Bytes<32>
+): MerkleTreePath<5, Bytes<32>>;
+
+// Public ledger state. The MerkleTree ADT contains the public commitments and
+// maintains its current Merkle root as part of its state. Its root is exposed
+// by the generated TypeScript ledger API; a separate mutable root cell is not
+// declared because the current ledger reference marks root() as TypeScript-
+// only. See TODO below if a mirrored Compact root is required by the UI.
+export ledger campaign: Campaign;
+// A domain-separated public key derived from the issuer's private witness.
+// The transaction itself is still balanced and signed by the connected wallet.
+export ledger issuer: Bytes<32>;
+// Depth 5 keeps compilation practical for the Wave 1 demo while supporting 32 approvals.
+export ledger approvedCommitments: MerkleTree<5, Bytes<32>>;
+export ledger usedNullifiers: Set<Bytes<32>>;
+// One opaque marker per underlying contributor/campaign. This prevents a
+// replacement secret from claiming after the original credential claimed.
+export ledger usedContributorNullifiers: Set<Bytes<32>>;
+// Public opaque revocation markers. The marker is derived from the private
+// contributor secret, not from the public commitment, so it cannot be linked
+// to a particular commitment by observers who do not know that secret.
+export ledger revokedNullifiers: Set<Bytes<32>>;
+// Public campaign budget cap, measured in the same native-token base units as
+// rewardAmount. It is reduced only after a verified payout succeeds.
+export ledger rewardBudget: Uint<128>;
+
+// --- PAYOUT STATE (deliberately separate from proof state) ---
+// The reward is 1,000 base units of Midnight's native Preprod test token
+// (tNIGHT). The sealed value is initialized once and cannot be changed by a
+// circuit after deployment.
+export sealed ledger rewardAmount: Uint<128>;
+// A successful claim binds its public payout recipient before payout runs.
+export ledger pendingRewardRecipients: Map<Bytes<32>, UserAddress>;
+// Prevents a successful claim from being paid more than once.
+export ledger paidRewardNullifiers: Set<Bytes<32>>;
+
+constructor(
+  campaignId: Field,
+  thresholdPoints: Uint<64>,
+  active: Boolean,
+  issuerAddress: Bytes<32>,
+  initialRewardBudget: Uint<128>
+) {
+  campaign = disclose(Campaign {
+    id: campaignId,
+    thresholdPoints: thresholdPoints,
+    active: active
+  });
+  issuer = disclose(issuerAddress);
+  rewardAmount = disclose(1000 as Uint<128>);
+  rewardBudget = disclose(initialRewardBudget);
+}
+
+// The issuer proves knowledge of the secret corresponding to the stored public
+// key. The DApp also submits through the issuer's connected wallet; no issuer
+// key is hardcoded in the contract or UI.
+circuit issuerPublicKey(secret: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([
+    pad(32, "proofperks:issuer-key"),
+    secret
+  ]);
+}
+
+circuit contributionCommitment(
+  campaignId: Field,
+  anchor: Bytes<32>,
+  secret: Bytes<32>,
+  points: Uint<64>
+): Bytes<32> {
+  return persistentHash<ContributionPreimage>(ContributionPreimage {
+    domain: pad(32, "proofperks:contribution"),
+    contributorAnchor: anchor,
+    contributorSecret: secret,
+    points: points,
+    campaignId: campaignId
+  });
+}
+
+circuit claimNullifier(
+  campaignId: Field,
+  secret: Bytes<32>
+): Bytes<32> {
+  return persistentHash<NullifierPreimage>(NullifierPreimage {
+    domain: pad(32, "proofperks:nullifier"),
+    campaignId: campaignId,
+    contributorSecret: secret
+  });
+}
+
+circuit contributorNullifier(
+  campaignId: Field,
+  anchor: Bytes<32>
+): Bytes<32> {
+  return persistentHash<ContributorNullifierPreimage>(ContributorNullifierPreimage {
+    domain: pad(32, "proofperks:contributor"),
+    campaignId: campaignId,
+    contributorAnchor: anchor
+  });
+}
+
+circuit revocationNullifier(
+  campaignId: Field,
+  secret: Bytes<32>
+): Bytes<32> {
+  return persistentHash<RevocationPreimage>(RevocationPreimage {
+    domain: pad(32, "proofperks:revocation"),
+    campaignId: campaignId,
+    contributorSecret: secret
+  });
+}
+
+// The issuer supplies a contributor secret and point total through private
+// witness callbacks. The public ledger receives only the commitment hash.
+export circuit approve_contribution(): [] {
+  assert(
+    issuer == issuerPublicKey(issuerSecret()),
+    "caller is not the issuer"
+  );
+  assert(campaign.active, "campaign is inactive");
+
+  const commitment = contributionCommitment(
+    campaign.id,
+    approvedContributorAnchor(),
+    approvedContributorSecret(),
+    approvedPoints()
+  );
+
+  approvedCommitments.insert(disclose(commitment));
+}
+
+// Proves eligibility without revealing the contributor secret or points.
+// The returned nullifier is intentionally public so a client can observe the
+// single-use claim marker; the secret and points remain private witnesses.
+export circuit claim_reward(recipient: UserAddress): Bytes<32> {
+  assert(campaign.active, "campaign is inactive");
+
+  const secret = contributorSecret();
+  const anchor = contributorAnchor();
+  const points = contributorPoints();
+  const commitment = contributionCommitment(campaign.id, anchor, secret, points);
+  const path = findCommitmentPath(commitment);
+
+  // Bind the witness path to this claimant's derived commitment, then prove
+  // that the path reconstructs the current public tree root.
+  assert(path.leaf == commitment, "path is not for this commitment");
+  assert(
+    approvedCommitments.checkRoot(
+      disclose(merkleTreePathRoot<5, Bytes<32>>(disclose(path)))
+    ),
+    "contribution commitment is not approved"
+  );
+
+  assert(points >= campaign.thresholdPoints, "threshold not met");
+
+  const nullifier = claimNullifier(campaign.id, secret);
+  const contributorMarker = contributorNullifier(campaign.id, anchor);
+  assert(
+    !revokedNullifiers.member(disclose(revocationNullifier(campaign.id, secret))),
+    "credential revoked"
+  );
+  assert(
+    !usedNullifiers.member(disclose(nullifier)),
+    "reward already claimed"
+  );
+  assert(
+    !usedContributorNullifiers.member(disclose(contributorMarker)),
+    "contributor already claimed"
+  );
+  usedNullifiers.insert(disclose(nullifier));
+  usedContributorNullifiers.insert(disclose(contributorMarker));
+
+  // This is the hand-off from proof verification to the isolated payout
+  // function. The recipient is public by choice because the reward must reach
+  // a wallet address; the contributor secret and points remain private.
+  pendingRewardRecipients.insert(disclose(nullifier), disclose(recipient));
+
+  return disclose(nullifier);
+}
+
+// Atomically retire an old credential and issue a replacement under the same
+// private contributor anchor. This administrative recovery circuit is
+// issuer-mediated; the issuer's authority is the trust boundary for deciding
+// that the old secret should be replaced.
+export circuit reissue_contribution(): [] {
+  assert(
+    issuer == issuerPublicKey(issuerSecret()),
+    "caller is not the issuer"
+  );
+  assert(campaign.active, "campaign is inactive");
+
+  const oldAnchor = oldContributorAnchor();
+  const oldSecret = oldContributorSecret();
+  const newAnchor = contributorAnchor();
+  const newSecret = contributorSecret();
+  const newPoints = contributorPoints();
+  assert(oldAnchor == newAnchor, "reissue anchor mismatch");
+  assert(
+    !revokedNullifiers.member(disclose(revocationNullifier(campaign.id, oldSecret))),
+    "old credential already revoked"
+  );
+
+  revokedNullifiers.insert(disclose(revocationNullifier(campaign.id, oldSecret)));
+  approvedCommitments.insert(
+    disclose(contributionCommitment(campaign.id, newAnchor, newSecret, newPoints))
+  );
+}
+
+// The issuer can revoke a previously approved credential without publishing
+// the commitment or contributor secret. This marker is public, but is
+// computationally unlinkable to the approved commitment without the secret.
+// Revocation affects future claims only; it does not roll back usedNullifiers.
+export circuit revoke_contribution(): [] {
+  assert(
+    issuer == issuerPublicKey(issuerSecret()),
+    "caller is not the issuer"
+  );
+
+  const marker = revocationNullifier(campaign.id, revocationTargetSecret());
+  revokedNullifiers.insert(disclose(marker));
+}
+
+// --- PAYOUT FUNCTION: NOT PART OF THE PRIVACY-CRITICAL PROOF ---
+// Pays exactly rewardAmount to the recipient bound by a successful claim.
+// This function has no access to contributor witnesses and cannot create a
+// nullifier or bypass membership, threshold, or duplicate-claim checks.
+export circuit payout_reward(nullifier: Bytes<32>): [] {
+  assert(usedNullifiers.member(disclose(nullifier)), "claim not verified");
+  assert(!paidRewardNullifiers.member(disclose(nullifier)), "reward already paid");
+  assert(pendingRewardRecipients.member(disclose(nullifier)), "claim recipient missing");
+  assert(
+    unshieldedBalanceGte(nativeToken(), rewardAmount),
+    "insufficient reward balance"
+  );
+  assert(rewardBudget >= rewardAmount, "reward budget exhausted");
+
+  const recipient = pendingRewardRecipients.lookup(disclose(nullifier));
+  sendUnshielded(
+    nativeToken(),
+    rewardAmount,
+    right<ContractAddress, UserAddress>(disclose(recipient))
+  );
+  paidRewardNullifiers.insert(disclose(nullifier));
+  pendingRewardRecipients.remove(disclose(nullifier));
+  rewardBudget = rewardBudget - rewardAmount;
+}

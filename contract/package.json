@@ -1,0 +1,35 @@
+{
+  "name": "@proofperks/contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "description": "ProofPerks Compact contract workspace.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuryaXyz-art/Proofperks.git",
+    "directory": "contract"
+  },
+  "bugs": {
+    "url": "https://github.com/SuryaXyz-art/Proofperks/issues"
+  },
+  "homepage": "https://github.com/SuryaXyz-art/Proofperks#readme",
+  "scripts": {
+    "compile": "node scripts/compile.mjs",
+    "build": "tsc --project tsconfig.build.json && node scripts/copy-managed.mjs",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "node --test test/proofperks.test.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "buffer": "6.0.3"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/testkit-js": "4.1.1",
+    "typescript": "5.9.3"
+  }
+}

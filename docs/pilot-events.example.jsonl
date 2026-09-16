@@ -1,0 +1,8 @@
+# Safe example only: no participant, wallet, credential, or transaction data.
+{"type":"approval","status":"success"}
+{"type":"claim","status":"success","provingTimeMs":842.4}
+{"type":"approval","status":"success"}
+{"type":"claim","status":"failure","failureCategory":"invalid_credential","provingTimeMs":91.2}
+{"type":"approval","status":"success"}
+{"type":"claim","status":"success","provingTimeMs":768.9}
+{"type":"claim","status":"failure","failureCategory":"duplicate_claim","provingTimeMs":64.1}
