@@ -26,16 +26,22 @@ struct Campaign {
 // into the public commitments tree.
 struct ContributionPreimage {
   domain: Bytes<32>;
+  credentialVersion: Uint<16>;
+  networkId: Bytes<32>;
+  deploymentId: Bytes<32>;
+  campaignId: Field;
   contributorAnchor: Bytes<32>;
   contributorSecret: Bytes<32>;
   points: Uint<64>;
-  campaignId: Field;
 }
 
 // Separate domain from the commitment hash so a nullifier cannot be confused
 // with an approved commitment for the same underlying secret.
 struct NullifierPreimage {
   domain: Bytes<32>;
+  credentialVersion: Uint<16>;
+  networkId: Bytes<32>;
+  deploymentId: Bytes<32>;
   campaignId: Field;
   contributorSecret: Bytes<32>;
 }
@@ -45,6 +51,9 @@ struct NullifierPreimage {
 // correlate a revoked marker with an approved leaf or a claim marker.
 struct RevocationPreimage {
   domain: Bytes<32>;
+  credentialVersion: Uint<16>;
+  networkId: Bytes<32>;
+  deploymentId: Bytes<32>;
   campaignId: Field;
   contributorSecret: Bytes<32>;
 }
@@ -80,11 +89,17 @@ witness findCommitmentPath(
 // declared because the current ledger reference marks root() as TypeScript-
 // only. See TODO below if a mirrored Compact root is required by the UI.
 export ledger campaign: Campaign;
+// Versioned credential scope. These fields prevent replay across networks,
+// deployments, campaigns, or incompatible credential encodings.
+export sealed ledger credentialVersion: Uint<16>;
+export sealed ledger networkId: Bytes<32>;
+export sealed ledger deploymentId: Bytes<32>;
 // A domain-separated public key derived from the issuer's private witness.
 // The transaction itself is still balanced and signed by the connected wallet.
 export ledger issuer: Bytes<32>;
 // Depth 5 keeps compilation practical for the Wave 1 demo while supporting 32 approvals.
 export ledger approvedCommitments: MerkleTree<5, Bytes<32>>;
+export ledger approvedCommitmentSet: Set<Bytes<32>>;
 export ledger usedNullifiers: Set<Bytes<32>>;
 // One opaque marker per underlying contributor/campaign. This prevents a
 // replacement secret from claiming after the original credential claimed.
@@ -96,6 +111,10 @@ export ledger revokedNullifiers: Set<Bytes<32>>;
 // Public campaign budget cap, measured in the same native-token base units as
 // rewardAmount. It is reduced only after a verified payout succeeds.
 export ledger rewardBudget: Uint<128>;
+// Reservations are made when a claim is accepted and discharged only after
+// the isolated payout succeeds. rewardBudget remains the total campaign cap;
+// this separate value is not a substitute for the actual contract balance.
+export ledger reservedRewardBudget: Uint<128>;
 
 // --- PAYOUT STATE (deliberately separate from proof state) ---
 // The reward is 1,000 base units of Midnight's native Preprod test token
@@ -104,6 +123,7 @@ export ledger rewardBudget: Uint<128>;
 export sealed ledger rewardAmount: Uint<128>;
 // A successful claim binds its public payout recipient before payout runs.
 export ledger pendingRewardRecipients: Map<Bytes<32>, UserAddress>;
+export ledger rewardReservations: Map<Bytes<32>, Uint<128>>;
 // Prevents a successful claim from being paid more than once.
 export ledger paidRewardNullifiers: Set<Bytes<32>>;
 
@@ -112,29 +132,40 @@ constructor(
   thresholdPoints: Uint<64>,
   active: Boolean,
   issuerAddress: Bytes<32>,
-  initialRewardBudget: Uint<128>
+  initialRewardBudget: Uint<128>,
+  configuredNetworkId: Bytes<32>,
+  configuredDeploymentId: Bytes<32>
 ) {
+  assert(thresholdPoints > 0, "threshold must be positive");
+  assert(initialRewardBudget >= 1000, "budget must cover one pilot reward");
   campaign = disclose(Campaign {
     id: campaignId,
     thresholdPoints: thresholdPoints,
     active: active
   });
   issuer = disclose(issuerAddress);
+  credentialVersion = disclose(1 as Uint<16>);
+  networkId = disclose(configuredNetworkId);
+  deploymentId = disclose(configuredDeploymentId);
   rewardAmount = disclose(1000 as Uint<128>);
   rewardBudget = disclose(initialRewardBudget);
+  reservedRewardBudget = disclose(0 as Uint<128>);
 }
 
 // The issuer proves knowledge of the secret corresponding to the stored public
 // key. The DApp also submits through the issuer's connected wallet; no issuer
 // key is hardcoded in the contract or UI.
-circuit issuerPublicKey(secret: Bytes<32>): Bytes<32> {
+export circuit issuerPublicKey(secret: Bytes<32>): Bytes<32> {
   return persistentHash<Vector<2, Bytes<32>>>([
     pad(32, "proofperks:issuer-key"),
     secret
   ]);
 }
 
-circuit contributionCommitment(
+export circuit contributionCommitment(
+  credentialVersion: Uint<16>,
+  networkId: Bytes<32>,
+  deploymentId: Bytes<32>,
   campaignId: Field,
   anchor: Bytes<32>,
   secret: Bytes<32>,
@@ -142,19 +173,28 @@ circuit contributionCommitment(
 ): Bytes<32> {
   return persistentHash<ContributionPreimage>(ContributionPreimage {
     domain: pad(32, "proofperks:contribution"),
+    credentialVersion: credentialVersion,
+    networkId: networkId,
+    deploymentId: deploymentId,
+    campaignId: campaignId,
     contributorAnchor: anchor,
     contributorSecret: secret,
-    points: points,
-    campaignId: campaignId
+    points: points
   });
 }
 
-circuit claimNullifier(
+export circuit claimNullifier(
+  credentialVersion: Uint<16>,
+  networkId: Bytes<32>,
+  deploymentId: Bytes<32>,
   campaignId: Field,
   secret: Bytes<32>
 ): Bytes<32> {
   return persistentHash<NullifierPreimage>(NullifierPreimage {
     domain: pad(32, "proofperks:nullifier"),
+    credentialVersion: credentialVersion,
+    networkId: networkId,
+    deploymentId: deploymentId,
     campaignId: campaignId,
     contributorSecret: secret
   });
@@ -171,12 +211,18 @@ circuit contributorNullifier(
   });
 }
 
-circuit revocationNullifier(
+export circuit revocationNullifier(
+  credentialVersion: Uint<16>,
+  networkId: Bytes<32>,
+  deploymentId: Bytes<32>,
   campaignId: Field,
   secret: Bytes<32>
 ): Bytes<32> {
   return persistentHash<RevocationPreimage>(RevocationPreimage {
     domain: pad(32, "proofperks:revocation"),
+    credentialVersion: credentialVersion,
+    networkId: networkId,
+    deploymentId: deploymentId,
     campaignId: campaignId,
     contributorSecret: secret
   });
@@ -192,12 +238,18 @@ export circuit approve_contribution(): [] {
   assert(campaign.active, "campaign is inactive");
 
   const commitment = contributionCommitment(
+    credentialVersion,
+    networkId,
+    deploymentId,
     campaign.id,
     approvedContributorAnchor(),
     approvedContributorSecret(),
     approvedPoints()
   );
 
+  assert(!approvedCommitmentSet.member(disclose(commitment)), "contribution already approved");
+  assert(!approvedCommitments.isFull(), "commitment tree is full (32 approvals maximum)");
+  approvedCommitmentSet.insert(disclose(commitment));
   approvedCommitments.insert(disclose(commitment));
 }
 
@@ -210,7 +262,15 @@ export circuit claim_reward(recipient: UserAddress): Bytes<32> {
   const secret = contributorSecret();
   const anchor = contributorAnchor();
   const points = contributorPoints();
-  const commitment = contributionCommitment(campaign.id, anchor, secret, points);
+  const commitment = contributionCommitment(
+    credentialVersion,
+    networkId,
+    deploymentId,
+    campaign.id,
+    anchor,
+    secret,
+    points
+  );
   const path = findCommitmentPath(commitment);
 
   // Bind the witness path to this claimant's derived commitment, then prove
@@ -225,10 +285,22 @@ export circuit claim_reward(recipient: UserAddress): Bytes<32> {
 
   assert(points >= campaign.thresholdPoints, "threshold not met");
 
-  const nullifier = claimNullifier(campaign.id, secret);
+  const nullifier = claimNullifier(
+    credentialVersion,
+    networkId,
+    deploymentId,
+    campaign.id,
+    secret
+  );
   const contributorMarker = contributorNullifier(campaign.id, anchor);
   assert(
-    !revokedNullifiers.member(disclose(revocationNullifier(campaign.id, secret))),
+    !revokedNullifiers.member(disclose(revocationNullifier(
+      credentialVersion,
+      networkId,
+      deploymentId,
+      campaign.id,
+      secret
+    ))),
     "credential revoked"
   );
   assert(
@@ -239,6 +311,11 @@ export circuit claim_reward(recipient: UserAddress): Bytes<32> {
     !usedContributorNullifiers.member(disclose(contributorMarker)),
     "contributor already claimed"
   );
+  assert(
+    unshieldedBalanceGte(nativeToken(), (reservedRewardBudget + rewardAmount) as Uint<128>),
+    "insufficient unreserved reward balance"
+  );
+  assert(rewardBudget >= reservedRewardBudget + rewardAmount, "reward budget exhausted");
   usedNullifiers.insert(disclose(nullifier));
   usedContributorNullifiers.insert(disclose(contributorMarker));
 
@@ -246,6 +323,8 @@ export circuit claim_reward(recipient: UserAddress): Bytes<32> {
   // function. The recipient is public by choice because the reward must reach
   // a wallet address; the contributor secret and points remain private.
   pendingRewardRecipients.insert(disclose(nullifier), disclose(recipient));
+  rewardReservations.insert(disclose(nullifier), disclose(rewardAmount));
+  reservedRewardBudget = (reservedRewardBudget + rewardAmount) as Uint<128>;
 
   return disclose(nullifier);
 }
@@ -268,13 +347,52 @@ export circuit reissue_contribution(): [] {
   const newPoints = contributorPoints();
   assert(oldAnchor == newAnchor, "reissue anchor mismatch");
   assert(
-    !revokedNullifiers.member(disclose(revocationNullifier(campaign.id, oldSecret))),
+    !revokedNullifiers.member(disclose(revocationNullifier(
+      credentialVersion,
+      networkId,
+      deploymentId,
+      campaign.id,
+      oldSecret
+    ))),
     "old credential already revoked"
   );
 
-  revokedNullifiers.insert(disclose(revocationNullifier(campaign.id, oldSecret)));
+  revokedNullifiers.insert(disclose(revocationNullifier(
+    credentialVersion,
+    networkId,
+    deploymentId,
+    campaign.id,
+    oldSecret
+  )));
+  assert(!approvedCommitmentSet.member(disclose(contributionCommitment(
+    credentialVersion,
+    networkId,
+    deploymentId,
+    campaign.id,
+    newAnchor,
+    newSecret,
+    newPoints
+  ))), "replacement contribution already approved");
+  assert(!approvedCommitments.isFull(), "commitment tree is full (32 approvals maximum)");
+  approvedCommitmentSet.insert(disclose(contributionCommitment(
+    credentialVersion,
+    networkId,
+    deploymentId,
+    campaign.id,
+    newAnchor,
+    newSecret,
+    newPoints
+  )));
   approvedCommitments.insert(
-    disclose(contributionCommitment(campaign.id, newAnchor, newSecret, newPoints))
+    disclose(contributionCommitment(
+      credentialVersion,
+      networkId,
+      deploymentId,
+      campaign.id,
+      newAnchor,
+      newSecret,
+      newPoints
+    ))
   );
 }
 
@@ -288,7 +406,13 @@ export circuit revoke_contribution(): [] {
     "caller is not the issuer"
   );
 
-  const marker = revocationNullifier(campaign.id, revocationTargetSecret());
+  const marker = revocationNullifier(
+    credentialVersion,
+    networkId,
+    deploymentId,
+    campaign.id,
+    revocationTargetSecret()
+  );
   revokedNullifiers.insert(disclose(marker));
 }
 
@@ -300,19 +424,27 @@ export circuit payout_reward(nullifier: Bytes<32>): [] {
   assert(usedNullifiers.member(disclose(nullifier)), "claim not verified");
   assert(!paidRewardNullifiers.member(disclose(nullifier)), "reward already paid");
   assert(pendingRewardRecipients.member(disclose(nullifier)), "claim recipient missing");
-  assert(
-    unshieldedBalanceGte(nativeToken(), rewardAmount),
-    "insufficient reward balance"
-  );
-  assert(rewardBudget >= rewardAmount, "reward budget exhausted");
+  assert(rewardReservations.member(disclose(nullifier)), "reward reservation missing");
 
   const recipient = pendingRewardRecipients.lookup(disclose(nullifier));
+  const reservedAmount = rewardReservations.lookup(disclose(nullifier));
   sendUnshielded(
     nativeToken(),
-    rewardAmount,
+    reservedAmount,
     right<ContractAddress, UserAddress>(disclose(recipient))
   );
   paidRewardNullifiers.insert(disclose(nullifier));
   pendingRewardRecipients.remove(disclose(nullifier));
-  rewardBudget = rewardBudget - rewardAmount;
+  rewardReservations.remove(disclose(nullifier));
+  reservedRewardBudget = reservedRewardBudget - reservedAmount;
+  rewardBudget = rewardBudget - reservedAmount;
+}
+
+// Funding is a native-token receive operation, separate from the public
+// campaign cap. The issuer controls who may fund the pool, but actual token
+// balance is checked independently at claim reservation time.
+export circuit fund_reward_pool(amount: Uint<128>): [] {
+  assert(issuer == issuerPublicKey(issuerSecret()), "caller is not the issuer");
+  assert(amount > 0, "funding amount must be positive");
+  receiveUnshielded(nativeToken(), disclose(amount));
 }

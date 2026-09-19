@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: Apache-2.0
+
+import { mkdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { encodeUserAddress } from '@midnight-ntwrk/compact-runtime';
+import { findDeployedContract, getPublicStates, getUnshieldedBalances } from '@midnight-ntwrk/midnight-js-contracts';
+import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
+import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
+import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
+import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
+import { DustSecretKey, ZswapSecretKeys, nativeToken } from '@midnight-ntwrk/midnight-js-protocol/ledger';
+import type { UnboundTransaction, WalletProvider, MidnightProviders } from '@midnight-ntwrk/midnight-js-types';
+import { ledger, CompiledProofPerksContract, bytes32FromHex, deriveContributionCommitment, deriveClaimNullifier, deriveIssuerPublicKey, proofPerksPrivateStateKey, uint64 } from '../../contract/dist/index.js';
+import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
+import { PREPROD_CONFIG, requirePreprodEnv } from './preprod-config.ts';
+import { assertProofServer, deploymentPath, loadManifest, managedPath, privateStateRoot, startWallet, withTimeout, waitFor } from './preprod-runtime.ts';
+
+setNetworkId(PREPROD_CONFIG.networkId);
+const deployment = JSON.parse(await readFile(deploymentPath, 'utf8'));
+const manifest = await loadManifest();
+if (deployment.sourceDigest !== manifest.source.sha256) throw new Error('Deployment and current circuit artifacts do not match.');
+await assertProofServer();
+const issuerSecret = bytes32FromHex(requirePreprodEnv('PROOFPERKS_ISSUER_SECRET'), 'PROOFPERKS_ISSUER_SECRET');
+const issuerPublicKey = bytes32FromHex(requirePreprodEnv('PROOFPERKS_ISSUER_PUBLIC_KEY'), 'PROOFPERKS_ISSUER_PUBLIC_KEY');
+if (Buffer.compare(Buffer.from(issuerPublicKey), Buffer.from(deriveIssuerPublicKey(issuerSecret))) !== 0) throw new Error('Issuer public key does not match the issuer secret.');
+const credentialNetworkId = bytes32FromHex(requirePreprodEnv('PROOFPERKS_CREDENTIAL_NETWORK_ID'), 'PROOFPERKS_CREDENTIAL_NETWORK_ID');
+const credentialDeploymentId = bytes32FromHex(requirePreprodEnv('PROOFPERKS_CREDENTIAL_DEPLOYMENT_ID'), 'PROOFPERKS_CREDENTIAL_DEPLOYMENT_ID');
+const contributorSecret = bytes32FromHex(requirePreprodEnv('PROOFPERKS_SMOKE_CONTRIBUTOR_SECRET'), 'PROOFPERKS_SMOKE_CONTRIBUTOR_SECRET');
+const contributorAnchor = bytes32FromHex(process.env.PROOFPERKS_SMOKE_CONTRIBUTOR_ANCHOR ?? process.env.PROOFPERKS_SMOKE_CONTRIBUTOR_SECRET ?? '', 'PROOFPERKS_SMOKE_CONTRIBUTOR_ANCHOR');
+const points = uint64(process.env.PROOFPERKS_SMOKE_POINTS ?? '125', 'PROOFPERKS_SMOKE_POINTS');
+const privateStatePassword = requirePreprodEnv('PROOFPERKS_PRIVATE_STATE_PASSWORD');
+const runtime = await startWallet();
+try {
+  const zswapSecretKeys = ZswapSecretKeys.fromSeed(runtime.seeds.shielded);
+  const dustSecretKey = DustSecretKey.fromSeed(runtime.seeds.dust);
+  const walletProvider: WalletProvider = { getCoinPublicKey: () => zswapSecretKeys.coinPublicKey, getEncryptionPublicKey: () => zswapSecretKeys.encryptionPublicKey, async balanceTx(tx: UnboundTransaction, ttl = new Date(Date.now() + 60 * 60 * 1000)) { const balanced = await runtime.wallet.balanceUnboundTransaction(tx, { shieldedSecretKeys: zswapSecretKeys, dustSecretKey }, { ttl }); const signed = await runtime.wallet.signRecipe(balanced, (payload) => runtime.keystore.signData(payload)); return runtime.wallet.finalizeRecipe(signed); } };
+  await mkdir(privateStateRoot, { recursive: true, mode: 0o700 });
+  const privateStateProvider = levelPrivateStateProvider({ privateStateStoreName: path.join(privateStateRoot, 'private-state'), signingKeyStoreName: path.join(privateStateRoot, 'signing-keys'), privateStoragePasswordProvider: () => privateStatePassword, accountId: runtime.walletAddress });
+  const zkConfigProvider = new NodeZkConfigProvider(managedPath);
+  const publicDataProvider = indexerPublicDataProvider(PREPROD_CONFIG.indexer, PREPROD_CONFIG.indexerWS);
+  const providers: MidnightProviders<any, any, any> = { privateStateProvider, publicDataProvider, zkConfigProvider, proofProvider: httpClientProofProvider(PREPROD_CONFIG.proofServer, zkConfigProvider), walletProvider, midnightProvider: { submitTx: (tx) => runtime.wallet.submitTransaction(tx) } };
+  const stateKey = `${proofPerksPrivateStateKey}:smoke:${runtime.walletAddress}`;
+  const privateState = { issuerSecret, approvedContributorSecret: contributorSecret, approvedContributorAnchor: contributorAnchor, approvedPoints: points, contributorAnchor, contributorSecret, contributorPoints: points, revocationTargetSecret: contributorSecret, oldContributorAnchor: contributorAnchor, oldContributorSecret: contributorSecret, commitmentPaths: new Map() };
+  const deployed = await findDeployedContract(providers, { contractAddress: deployment.address, compiledContract: CompiledProofPerksContract, privateStateId: stateKey, initialPrivateState: privateState });
+  const before = ledger((await getPublicStates(publicDataProvider, deployment.address)).contractState as any);
+  await withTimeout(deployed.callTx.approve_contribution(), 10 * 60_000, 'approval transaction');
+  const commitment = deriveContributionCommitment({ credentialVersion: 1n, networkId: credentialNetworkId, deploymentId: credentialDeploymentId, campaignId: BigInt(deployment.campaign.id), anchor: contributorAnchor, secret: contributorSecret, points });
+  const approved = await waitFor(() => getPublicStates(publicDataProvider, deployment.address), (value) => Boolean(value.contractState), 120_000, 'approval confirmation');
+  const approvedLedger = ledger(approved.contractState as any);
+  const commitmentPath = approvedLedger.approvedCommitments.findPathForLeaf(commitment);
+  if (!commitmentPath) throw new Error('Smoke credential commitment was not found in the confirmed tree.');
+  await privateStateProvider.set(stateKey, { ...privateState, commitmentPaths: new Map([[Buffer.from(commitment).toString('hex'), commitmentPath]]) });
+  const recipientAddress = (await runtime.wallet.unshielded.getAddress()).toString();
+  const recipient = { bytes: encodeUserAddress(recipientAddress) };
+  await withTimeout(deployed.callTx.claim_reward(recipient), 10 * 60_000, 'claim transaction');
+  const nullifier = deriveClaimNullifier({ credentialVersion: 1n, networkId: credentialNetworkId, deploymentId: credentialDeploymentId, campaignId: BigInt(deployment.campaign.id), secret: contributorSecret });
+  const claimed = await waitFor(() => getPublicStates(publicDataProvider, deployment.address), (value) => ledger(value.contractState as any).usedNullifiers.member(nullifier), 120_000, 'claim confirmation');
+  await withTimeout(deployed.callTx.payout_reward(nullifier), 10 * 60_000, 'payout transaction');
+  const finalState = await waitFor(() => getPublicStates(publicDataProvider, deployment.address), (value) => ledger(value.contractState as any).paidRewardNullifiers.member(nullifier), 120_000, 'payout confirmation');
+  const actualBalance = (await getUnshieldedBalances(publicDataProvider, deployment.address)).find((entry) => entry.tokenType === nativeToken().raw)?.balance ?? 0n;
+  console.log(JSON.stringify({ status: 'confirmed', network: PREPROD_CONFIG.networkId, address: deployment.address, deploymentTransactionId: deployment.transactionId, beforeApprovedCommitments: Number(before.approvedCommitments.firstFree()), afterApprovedCommitments: Number(ledger(approved.contractState as any).approvedCommitments.firstFree()), nullifierRecorded: ledger(claimed.contractState as any).usedNullifiers.member(nullifier), payoutRecorded: ledger(finalState.contractState as any).paidRewardNullifiers.member(nullifier), actualNativeTokenBalanceAfterPayout: actualBalance.toString(), rewardAmount: ledger(finalState.contractState as any).rewardAmount.toString() }, null, 2));
+} finally { await runtime.stop().catch(() => undefined); }

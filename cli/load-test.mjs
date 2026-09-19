@@ -135,7 +135,7 @@ async function run() {
   const validSummary = summarizeClaimAttempts(validAttempts);
   for (const attempt of validAttempts) {
     events.push(JSON.stringify(attempt.ok
-      ? { type: 'claim', status: 'success', provingTimeMs: attempt.proofGenerationMs }
+      ? { type: 'claim', status: 'success', simulationTimeMs: attempt.proofGenerationMs, measurementProvenance: 'reference_simulation' }
       : { type: 'claim', status: 'failure', failureCategory: 'unknown_failure' }));
   }
 

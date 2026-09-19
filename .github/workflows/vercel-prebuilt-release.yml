@@ -1,0 +1,48 @@
+name: ProofPerks Vercel prebuilt release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: npm
+      - name: Install dependencies from lockfile
+        run: npm ci
+      - name: Require immutable deployed-contract bundle
+        shell: bash
+        run: |
+          test -f deployments/preprod.json
+          test -f deployments/preprod-circuit-bundle/manifest.json
+          npm run validate:artifacts
+      - name: Install Vercel CLI
+        run: npm install --global vercel@59.10.0
+      - name: Pull Production project configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          test -n "$VERCEL_PROJECT_ID"
+          vercel link --yes --project "$VERCEL_PROJECT_ID" --team "$VERCEL_ORG_ID" --token="$VERCEL_TOKEN"
+          vercel pull --yes --environment=production --project "$VERCEL_PROJECT_ID" --token="$VERCEL_TOKEN" --scope="$VERCEL_ORG_ID"
+      - name: Build immutable prebuilt output
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --token="$VERCEL_TOKEN"
+      - name: Deploy prebuilt output only
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"

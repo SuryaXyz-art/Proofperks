@@ -5,7 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const uiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const source = path.resolve(uiRoot, '..', 'contract', 'src', 'managed', 'proofperks');
+const source = process.env.PROOFPERKS_ZK_CONFIG_SOURCE
+  ? path.resolve(process.env.PROOFPERKS_ZK_CONFIG_SOURCE)
+  : path.resolve(uiRoot, '..', 'contract', 'managed');
 const destination = path.resolve(uiRoot, 'public', 'zkconfig');
 
 await rm(destination, { recursive: true, force: true });

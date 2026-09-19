@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { MerkleTreePath, WitnessContext } from '@midnight-ntwrk/compact-runtime';
-import type { Ledger } from './managed/proofperks/contract/index.js';
+import type { Ledger } from '../managed/contract/index.js';
 import { Buffer } from 'buffer';
 
 export const proofPerksPrivateStateKey = 'proofperksPrivateState' as const;

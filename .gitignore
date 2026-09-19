@@ -4,6 +4,7 @@ contract/managed/
 contract/dist/
 ui/public/zkconfig/
 ui/dist/
+.private-state/
 logs/
 *.log
 .env
@@ -13,3 +14,5 @@ pilot-events.jsonl
 pilot-metrics.json
 pilot-load-events.jsonl
 pilot-load-metrics.json
+
+.vercel

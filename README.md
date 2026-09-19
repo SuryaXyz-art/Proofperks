@@ -14,6 +14,21 @@ Private eligibility checks for Web3 community rewards, built with Midnight Compa
 
 **Current stage: development prototype.** The contract compiles and the repository includes an organizer dashboard, testkit integration tests, and a reference CLI demo. A completed live Preprod deployment, successful end-to-end testkit run, and real pilot results are not claimed.
 
+## Release and evidence status
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Source repository | VERIFIED | [github.com/SuryaXyz-art/Proofperks](https://github.com/SuryaXyz-art/Proofperks) |
+| Vercel project configuration | VERIFIED | Project `proofperks`, ID `prj_5kEUtT2RwN575ZNAfauby2HzI4o2`, Node 22.x, `ui/dist` output |
+| Confirmed Preprod deployment | BLOCKED | No `deployments/preprod.json` exists in this workspace |
+| Preprod contract address and transaction | BLOCKED | No confirmed deployment receipt is available |
+| Vercel Preview URL | PENDING | No Preview deployment exists |
+| Vercel Production URL | PENDING | No Production deployment exists |
+| Real Compact/testkit proving timings | BLOCKED | Required testkit services are unavailable; integration tests remain skipped |
+| 3–5-person pilot outcomes | PENDING | Runbook and survey exist; no pilot has been executed |
+
+No deployment identifier, website URL, transaction receipt, payout, pilot participation, feedback, timing, or security-review result is inferred from a local build or simulation.
+
 ## Contents
 
 - [Overview](#overview)
@@ -67,14 +82,15 @@ Implemented in this repository:
 - Preprod network configuration and a headless `deploy:preprod` command using Midnight.js.
 - A minimal React organizer dashboard with wallet connection, session-only pending approvals, on-chain approval, public claim count, commitment root, and remaining-budget metrics.
 - An organizer revoke control that submits issuer-signed future-claim revocations while keeping the target secret in session memory.
+- A contributor flow for credential import, latest-tree eligibility checks, recipient confirmation, separate Claim and Collect Reward actions, and encrypted credential backup/import held only in the current session.
+- A typed client core shared by the browser integration and deployment CLI for wallet/network/artifact validation and account/role/network/contract-scoped private-state namespaces.
 
 Not implemented yet:
 
 - A completed live Preprod deployment from this workspace.
 - A captured real-testkit proving-time report from this workspace; the latest run was explicitly skipped because Docker/testkit infrastructure is unavailable here.
-- Contributor claim controls in the UI.
 - Custom reward-token minting or treasury management beyond the fixed native-token payout.
-- A generated claim-path indexer/private-state flow for the UI.
+- A live wallet/prover/chain validation from this workspace; browser flows are implemented but require the configured Preprod deployment and prover.
 
 The Compact source compiles with `compact compile`, including full ZK assets when run without `--skip-zk`. The integration tests exercise the generated artifact through Midnight testkit when its node, indexer, wallet, and proof-server infrastructure is available. The explicit `reference` mode remains the runnable Wave 1 CLI fallback; its timings are not Compact proving times.
 
@@ -167,8 +183,7 @@ proofperks/
 │   │   ├── proofperks.compact      # Contract source
 │   │   ├── index.ts               # Contract package exports
 │   │   ├── witnesses.ts           # Private-input callbacks
-│   │   └── managed/proofperks/    # Generated app/package artifacts (ignored)
-│   ├── managed/                  # Generated integration-test artifacts (ignored)
+│   ├── managed/                  # Single canonical generated artifact tree (ignored)
 │   ├── scripts/                  # Compilation and artifact-copy helpers
 │   └── test/proofperks.test.mjs   # Three testkit integration scenarios
 ├── cli/
@@ -183,9 +198,32 @@ proofperks/
 └── LICENSE                       # Apache-2.0
 ```
 
-The two generated-output directories currently serve different consumers. Generate both when preparing the app and the integration tests; neither is supplied by a fresh Git clone.
+The generated-output directory is shared by the contract package, integration tests, CLI, and UI. A fresh clone must run the compiler before these consumers can use it.
 
 ## How to run
+
+### Reproducible Linux/WSL setup
+
+Use WSL2 Ubuntu/Linux with Node.js 22.23.2, Compact compiler 0.31.1, and the pinned npm lockfile. The compiler installation is:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
+source ~/.bashrc
+compact update 0.31.1
+npm ci
+```
+
+The local build gates are:
+
+```bash
+npm run compile
+npm run validate:artifacts
+npm run typecheck
+npm run test:generated
+npm run build --workspace @proofperks/ui
+```
+
+Real Preprod work additionally requires a funded dedicated issuer wallet, native Preprod test tokens, DUST, the issuer secret/public-key pair, credential network/deployment scope, a private-state password, and a compatible proof server. Contributor testing requires a separate contributor wallet and private credential/anchor. Keep all of these local; never put them in GitHub Actions pull-request secrets, Vercel variables, browser analytics, or logs.
 
 ### 1. Prerequisites and installation
 
@@ -214,23 +252,25 @@ From the repository root:
 npm run compile
 ```
 
-This workspace command generates `contract/src/managed/proofperks` and builds the generated TypeScript wrapper as the contract package. On Windows, the compile script automatically invokes Compact through WSL because the compiler is not natively supported there. The integration suite imports a different location, `contract/managed`. Generate that location too, using the following command **inside WSL Ubuntu, from the cloned repository root**:
+This workspace command generates the single canonical artifact tree in `contract/managed` and builds the generated TypeScript wrapper as the contract package. On Windows, the compile script automatically invokes Compact through WSL because the compiler is not natively supported there. The integration suite, CLI, and UI all consume or package this same generated tree. No second manual compilation is required.
 
 ```bash
-compact compile contract/src/proofperks.compact contract/managed
+npm run compile
 ```
 
-Do not use `--skip-zk` for a real proof run: it omits the full proving/verifying assets. Recompile both locations after changing the Compact source.
+Do not use `--skip-zk` for a real proof run: it omits the full proving/verifying assets. Rerun `npm run compile` after changing the Compact source.
 
-### 3. Run the integration tests
+### 3. Run the generated and integration tests
 
-The tests use Node's built-in runner and Midnight testkit. Start Docker Desktop for a local undeployed environment, or set `MN_TEST_ENVIRONMENT` for a configured remote environment. Docker availability alone is not sufficient: configure the testkit's local service/Compose setup or its supported remote environment first. This repository does not include a local Compose configuration.
+The generated suite checks the canonical wrapper/helpers without a mock state model. The integration suite uses Node's built-in runner and Midnight testkit. Start Docker Desktop and the pinned project environment in `contract/compose.yml`, or set `MN_TEST_ENVIRONMENT` for a configured remote environment.
 
 ```powershell
-npm test
+npm run test:generated
+npm run test:client
+npm run test:integration
 ```
 
-If testkit infrastructure is unavailable, the three integration tests are explicitly marked `SKIP`; they never fall back to a JavaScript mock. In a real testkit run, claim lines are labeled `REAL COMPACT/TESTKIT` and measure proof generation plus transaction finalization. This checkout's latest run produced no such timings because Docker was unavailable.
+If testkit infrastructure is unavailable, the nine integration tests are explicitly marked `SKIP`; they never fall back to a JavaScript mock. `npm run test:release` compiles first and fails when required integration tests are skipped or zero tests execute. In a real testkit run, successful calls are labeled `REAL COMPACT/TESTKIT` and measure proof generation plus transaction finalization. This checkout's latest run produced no such timings because Docker was unavailable.
 
 ### 4. Run the local CLI demonstration
 
@@ -258,14 +298,17 @@ Leave it running. In a second PowerShell terminal, from the repository root:
 
 ```powershell
 $env:PROOFPERKS_WALLET_SEED="<32-byte-hex-seed>"
+$env:PROOFPERKS_ISSUER_SECRET="<32-byte-hex-issuer-secret>"
 $env:PROOFPERKS_ISSUER_PUBLIC_KEY="<32-byte-hex-key>"
+$env:PROOFPERKS_CREDENTIAL_NETWORK_ID="<32-byte-hex-network-scope>"
+$env:PROOFPERKS_CREDENTIAL_DEPLOYMENT_ID="<32-byte-hex-deployment-scope>"
 $env:PROOFPERKS_PRIVATE_STATE_PASSWORD="<strong-local-password>"
 npm run deploy:preprod
 ```
 
 The wallet must have Preprod tNIGHT and DUST available. The command prints the deployed contract address; keep it for the UI configuration.
 
-The deployment account or another treasury must also fund the contract with native Preprod test token (tNIGHT). `PROOFPERKS_REWARD_BUDGET` sets the public campaign budget cap at deployment; each successful claim can then call `payout_reward` to send exactly 1,000 base units to the recipient address bound during `claim_reward`. Payout is intentionally a second transaction so its failure cannot roll back or bypass the privacy checks.
+The deployment account or another treasury must fund the contract through the issuer-authenticated `fund_reward_pool` circuit. After deployment, run `PROOFPERKS_FUND_REWARD_POOL=1000 npm run fund:preprod`, then `npm run verify:preprod`. Verification reports actual contract native-token balance separately from `PROOFPERKS_REWARD_BUDGET`, the public campaign cap. The configured smoke runner is `npm run smoke:preprod`; it performs approval, claim, and payout only after a confirmed deployment record exists. A successful claim reserves one fixed 1,000-base-unit reward; `payout_reward` sends it to the recipient bound during `claim_reward`, then discharges the reservation and cap. If payout fails, the reservation remains retryable without claiming again.
 
 ### 6. Build and run the organizer dashboard
 
@@ -280,10 +323,28 @@ A build is not an end-to-end wallet validation. To run the Preprod UI against th
 ```powershell
 $env:VITE_PROOFPERKS_CONTRACT_ADDRESS="<deployed-contract-address>"
 $env:VITE_PROOFPERKS_ISSUER_PUBLIC_KEY="<same-issuer-public-key>"
+$env:VITE_PROOFPERKS_CREDENTIAL_NETWORK_ID="<same-32-byte-network-scope>"
+$env:VITE_PROOFPERKS_CREDENTIAL_DEPLOYMENT_ID="<same-32-byte-deployment-scope>"
 npm run dev --workspace @proofperks/ui
 ```
 
 Open the Vite URL in Chrome with Midnight Lace installed, set to Preprod, and click **Connect wallet**. Enter the contract address, issuer public key, and issuer secret; add a pending credential, then click **Approve on-chain**. The approval transaction is balanced and submitted through the connected wallet API. The dashboard reads only public ledger aggregates, while issuer/contributor secrets and raw points stay in React memory for the current session and are never written to `localStorage`, `sessionStorage`, IndexedDB, or the ledger.
+
+### Vercel Preview — guarded prebuilt workflow
+
+The repository contains a root `vercel.json` for the existing npm workspace: Vercel runs `npm ci`, executes `npm run build:vercel`, and serves `ui/dist`. `build:vercel` is deliberately stricter than the ordinary local UI build. It requires `deployments/preprod.json` and the matching `deployments/preprod-circuit-bundle/` produced only after a confirmed Preprod deployment, verifies the source digest and every public circuit artifact hash, checks the public contract/issuer/credential configuration, and only then copies the exact bundle into the browser build. Private seeds, issuer secrets, private state, and the prover are not Vercel inputs.
+
+After a confirmed deployment record exists, the supported WSL/Linux sequence is:
+
+```bash
+vercel pull --yes --environment=preview
+npm ci
+npm run build:vercel
+vercel build
+vercel deploy --prebuilt
+```
+
+The current workspace has not completed a Preprod deployment, so `npm run build:vercel` currently refuses with a missing `deployments/preprod.json` error. No Preview URL or live public campaign read is claimed until the deployment manifest, exact circuit bundle, and HTTPS deployment are verified. The SPA rewrite excludes `/zkconfig`, `/assets`, and extension-bearing files so a missing circuit asset is not silently served as `index.html`.
 
 ### 7. Optional: supply a live CLI adapter
 
@@ -291,12 +352,12 @@ For a custom live CLI scenario runner, provide a deployment adapter that exports
 
 ```powershell
 $env:PROOFPERKS_DEMO_MODE="live"
-$env:PROOFPERKS_NETWORK="local" # or testnet
-$env:PROOFPERKS_DEMO_ADAPTER="C:\path\to\deployment-adapter.mjs"
+$env:PROOFPERKS_NETWORK="preprod"
+$env:PROOFPERKS_DEMO_ADAPTER="C:\path\to\proofperks\cli\src\preprod-demo-adapter.ts"
 npm run demo --workspace @proofperks/cli
 ```
 
-The live adapter is responsible for the generated Compact contract, wallet, providers, proof server, deployment, and ledger snapshots. See [cli/demo.ts](./cli/demo.ts) for its required interface and output contract.
+The live adapter is responsible for the generated Compact contract, wallet, providers, proof server, deployment, and ledger snapshots. A Preprod implementation is provided at [`cli/src/preprod-demo-adapter.ts`](./cli/src/preprod-demo-adapter.ts); run it only with a confirmed deployment record, a matching circuit bundle, private wallet/prover configuration, and separate fresh campaign credentials for each scenario. It reports complete transaction duration and provenance; isolated proving duration remains `unavailable` unless the provider supplies an independent measurement. See [cli/demo.ts](./cli/demo.ts) for the interface and output contract.
 
 PowerShell examples use `$env:NAME="value"`. In a Bash terminal, use `export NAME="value"` for the same environment settings. The direct Compact command above must run in the environment where Compact is installed.
 
@@ -316,7 +377,7 @@ The [integration suite](./contract/test/proofperks.test.mjs) imports `contract/m
 
 - `REAL COMPACT/TESTKIT` is the integration runner's label. Its timer surrounds the complete contract call, including proof generation and transaction finalization on successful calls; it is **not isolated prover time**.
 - A rejected call can fail during local witness preparation, before a proof is generated. Its elapsed time is not necessarily proving or verification time.
-- The current negative tests accept a rejected call and check unchanged state; they do not isolate every possible rejection cause. The tampered case can fail because no Merkle path is supplied for the changed commitment.
+- The live generated-circuit negative tests are still skipped in this checkout because testkit infrastructure is unavailable. The checked-in threshold-negative case now installs the valid approved Merkle path first, so a live run can exercise the intended threshold assertion; exact public error wording still depends on the testkit/runtime.
 - Reference CLI and load-runner durations measure an in-process simulation. Do not present them as Compact proof-server results or real network race-condition measurements.
 - The three integration scenarios do not constitute complete payout, revocation, recovery, or production-security coverage.
 
@@ -340,7 +401,7 @@ npm run pilot:export -- --input .\pilot-events.jsonl --output .\pilot-metrics.js
 
 The load runner reports valid-batch failure rate and proving-time average/p95 separately from an intentional same-nullifier race probe. It is not a live proof-server benchmark.
 
-The exporter accepts only `type`, `status`, `provingTimeMs`, and `failureCategory`; it rejects extra fields to help prevent accidental export of participant data.
+The exporter accepts only aggregate-safe event fields: `type`, `status`, separate `simulationTimeMs`, `transactionTimeMs`, or `provingTimeMs`, fixed `measurementProvenance`, and `failureCategory`. A timing value without provenance is rejected. This keeps reference simulation, complete transaction timing, and independently measured proving timing separate and helps prevent accidental export of participant data.
 
 ## Roadmap
 
@@ -350,8 +411,7 @@ The roadmap below separates work that is already scaffolded from work that still
 
 - Execute the existing Preprod deployment script with a funded wallet, DUST, proof server, and reward pool; no live deployment has been completed from this workspace.
 - Run the supervised 3–5 contributor pilot described in [docs/pilot-runbook.md](./docs/pilot-runbook.md) and collect feedback using [docs/pilot-survey.md](./docs/pilot-survey.md); the materials exist, but the pilot has not been run.
-- Add contributor claim controls to the React UI. The current UI is an organizer dashboard and does not yet provide a contributor claim screen.
-- Add the claim-path indexer/private-state flow needed for a contributor-facing claim experience.
+- Validate the contributor claim controls and claim-path/indexer/private-state flow in a live hosted wallet session; implementation exists, but live acceptance is not verified.
 - Use the existing anonymized exporter and reference load runner to produce reportable aggregate metrics, then replace reference timings with live testkit measurements when test infrastructure is available.
 - Move pending approval intake and organizer audit history beyond the current session-only queue if the pilot requires durable operations.
 
@@ -369,7 +429,7 @@ The roadmap below separates work that is already scaffolded from work that still
 - A live Preprod deployment needs a funded wallet, DUST, Lace or headless wallet configuration, the local proof server, and a separately funded reward pool.
 - The organizer dashboard’s pending queue is intentionally session-only and has no backend/indexer integration; it is not a durable workflow for receiving approval requests.
 - The runnable reference demo is an in-process harness, not a blockchain transaction and not a measurement of real ZK proof-server time.
-- A live custom CLI demo still needs a deployment adapter and configured local/testnet infrastructure.
+- A live custom CLI demo still needs configured Preprod/local infrastructure, private credentials, and a confirmed deployment record.
 - Only one campaign is modeled.
 - Issuer approval is trusted and centralized; real-world contribution completion is outside the circuit's trust model.
 - Revocation is future-facing only: revoking before a claim blocks the claim, but revoking after a nullifier is recorded does not undo that claim or reverse a payout. This is a known limitation.
@@ -386,8 +446,11 @@ The roadmap below separates work that is already scaffolded from work that still
 | [Pilot runbook](./docs/pilot-runbook.md) | Prepare the supervised 3–5 contributor pilot and its prerequisites. |
 | [Pilot survey](./docs/pilot-survey.md) | Collect claim-flow feedback without requesting identifying information. |
 | [Example pilot events](./docs/pilot-events.example.jsonl) | Understand the safe event schema; example values are not pilot results. |
-| [Preprod configuration](./cli/src/preprod-config.mjs) | Inspect the endpoints and proof-server setting used by the deployment helper. |
+| [Preprod configuration](./cli/src/preprod-config.ts) | Inspect the endpoints and proof-server setting used by the deployment helper. |
 | [CLI adapter interface](./cli/demo.ts) | Connect the narrated demo to a configured live deployment. |
+| [Environment baseline](./docs/ENVIRONMENT.md) | Reproduce the WSL2/Linux toolchain and inspect the current compatibility row. |
+| [Upgrade plan](./docs/UPGRADE_PLAN.md) | Follow the prioritized implementation phases and acceptance evidence. |
+| [Codex handoff](./docs/CODEX_HANDOFF.md) | Review the verified baseline, blockers, and next phase. |
 
 The pilot documents describe planned execution. They are not evidence of completed onboarding, user feedback, or measured adoption.
 
@@ -397,12 +460,14 @@ Apache-2.0. See [LICENSE](./LICENSE).
 
 ## AKINDO/Midnight submission checklist
 
-Leave these items unchecked until they are manually confirmed:
+Use these labels as evidence status rather than treating repository presence as completion:
 
-- [x] Public GitHub repository: [https://github.com/SuryaXyz-art/Proofperks](https://github.com/SuryaXyz-art/Proofperks)
-- [ ] This README
-- [ ] Pitch deck
-- [ ] Demo video
-- [ ] Wave progress description
-- [ ] `midnightntwrk` repository topic/label
-- [ ] Apache-2.0 license applied to the Midnight code
+- [x] VERIFIED — Public GitHub repository: [https://github.com/SuryaXyz-art/Proofperks](https://github.com/SuryaXyz-art/Proofperks)
+- [x] VERIFIED — This README exists and records blocked/pending claims honestly
+- [ ] PENDING — Pitch deck
+- [ ] PENDING — Demo video
+- [ ] PENDING — Wave progress description
+- [ ] PENDING — `midnightntwrk` repository topic/label
+- [x] VERIFIED — Apache-2.0 license applied to the checked-in Midnight code
+- [ ] BLOCKED — Public website URL and confirmed Preprod deployment evidence
+- [ ] BLOCKED — Real 3–5-person pilot aggregate outcomes

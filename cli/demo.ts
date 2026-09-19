@@ -5,8 +5,8 @@
  *
  * Live mode:
  *   PROOFPERKS_DEMO_MODE=live
- *   PROOFPERKS_NETWORK=local|testnet
- *   PROOFPERKS_DEMO_ADAPTER=/absolute/path/to/deployment-adapter.mjs
+ *   PROOFPERKS_NETWORK=preprod|local|testnet
+ *   PROOFPERKS_DEMO_ADAPTER=/absolute/path/to/preprod-demo-adapter.ts
  *   npm run demo --workspace @proofperks/cli
  *
  * The adapter is the small environment-specific bridge to the generated
@@ -37,7 +37,7 @@ import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 
-type Network = 'local' | 'testnet';
+type Network = 'local' | 'testnet' | 'preprod';
 type ScenarioName = 'happy-path' | 'tampered-credential' | 'double-claim';
 
 type Snapshot = {
@@ -64,12 +64,14 @@ type ClaimResult = {
   nullifier?: string;
   transactionId?: string;
   proofGenerationMs?: number;
+  timings?: { simulationMs?: number; transactionMs?: number; provingMs?: number; measurementProvenance: string };
 };
 
 type PayoutResult = {
   amount?: bigint | number;
   recipient?: string;
   transactionId?: string;
+  timings?: { transactionMs?: number; measurementProvenance: string };
 };
 
 type Deployment = {
@@ -171,6 +173,20 @@ function measureClaim<T>(claim: () => Promise<T>): Promise<{ result?: T; error?:
     .catch((error: unknown) => ({ error, elapsedMs: performance.now() - started }));
 }
 
+function printClaimTiming(result: ClaimResult | undefined, elapsedMs: number): void {
+  if (result?.timings) {
+    const timing = result.timings;
+    console.log(`  Measurement provenance: ${timing.measurementProvenance}`);
+    if (timing.simulationMs !== undefined) console.log(`  Simulation duration: ${timing.simulationMs.toFixed(3)} ms`);
+    if (timing.transactionMs !== undefined) console.log(`  Complete transaction duration: ${timing.transactionMs.toFixed(3)} ms`);
+    console.log(`  Independently measured proving duration: ${timing.provingMs === undefined ? 'unavailable' : `${timing.provingMs.toFixed(3)} ms`}`);
+    return;
+  }
+  console.log(`  Measurement provenance: ${process.env.PROOFPERKS_DEMO_MODE === 'live' ? 'live_midnight_transaction' : 'reference_simulation'}`);
+  console.log(`  ${process.env.PROOFPERKS_DEMO_MODE === 'live' ? 'Complete transaction attempt' : 'Simulation'} duration: ${elapsedMs.toFixed(3)} ms`);
+  console.log('  Independently measured proving duration: unavailable');
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -221,11 +237,10 @@ async function runHappyPath(factory: DeploymentFactory, network: Network): Promi
     }));
     assertCondition(!measured.error, `claim failed: ${errorMessage(measured.error)}`);
     const claim = measured.result as ClaimResult;
-    const proofTime = claim.proofGenerationMs ?? measured.elapsedMs;
     const afterClaim = await deployment.snapshot();
     printPublic('claim nullifier', claim.nullifier ?? '<adapter did not return nullifier>');
     printSnapshot('Nullifier set after claim:', afterClaim);
-    console.log(`  Proof generation time: ${proofTime.toFixed(3)} ms`);
+    printClaimTiming(claim, measured.elapsedMs);
 
     const expected = claim.nullifier ?? makeNullifier({
       contributorSecret: values.contributorSecret,
@@ -282,7 +297,7 @@ async function runTamperedCredential(factory: DeploymentFactory, network: Networ
     assertCondition(!!measured.error, 'tampered claim unexpectedly succeeded');
     const afterClaim = await deployment.snapshot();
     printSnapshot('Nullifier set after rejected claim:', afterClaim);
-    console.log(`  Proof generation time: ${measured.elapsedMs.toFixed(3)} ms`);
+    printClaimTiming(undefined, measured.elapsedMs);
     console.log(`  Rejection reason: ${errorMessage(measured.error)}`);
     assertCondition(afterClaim.commitmentsRoot === beforeClaim.commitmentsRoot, 'rejected claim changed the commitments root');
     assertCondition(afterClaim.usedNullifiers.length === beforeClaim.usedNullifiers.length, 'rejected claim changed the nullifier set');
@@ -338,11 +353,10 @@ async function runDoubleClaim(factory: DeploymentFactory, network: Network): Pro
     }));
     assertCondition(!first.error, `first claim failed: ${errorMessage(first.error)}`);
     const firstClaim = first.result as ClaimResult;
-    const firstProofTime = firstClaim.proofGenerationMs ?? first.elapsedMs;
     const afterFirst = await deployment.snapshot();
     printPublic('first claim nullifier', firstClaim.nullifier ?? '<adapter did not return nullifier>');
     printSnapshot('Nullifier set after first claim:', afterFirst);
-    console.log(`  Proof generation time: ${firstProofTime.toFixed(3)} ms`);
+    printClaimTiming(firstClaim, first.elapsedMs);
     if (deployment.payoutReward) {
       const payout = await deployment.payoutReward(firstClaim.nullifier ?? makeNullifier({
         contributorSecret: values.contributorSecret,
@@ -363,7 +377,7 @@ async function runDoubleClaim(factory: DeploymentFactory, network: Network): Pro
     assertCondition(!!second.error, 'second claim unexpectedly succeeded');
     const afterSecond = await deployment.snapshot();
     printSnapshot('Nullifier set after rejected second claim:', afterSecond);
-    console.log(`  Proof generation time: ${second.elapsedMs.toFixed(3)} ms`);
+    printClaimTiming(undefined, second.elapsedMs);
     console.log(`  Rejection reason: ${errorMessage(second.error)}`);
     assertCondition(afterFirst.usedNullifiers.length === beforeFirst.usedNullifiers.length + 1, 'first claim did not record one nullifier');
     assertCondition(afterSecond.usedNullifiers.length === afterFirst.usedNullifiers.length, 'second claim changed the nullifier set');
@@ -403,7 +417,7 @@ function referenceDeploymentFactory(): DeploymentFactory {
         if (usedNullifiers.has(claimNullifier)) throw new Error('proof verification failed: nullifier already exists');
         usedNullifiers.add(claimNullifier);
         pendingRecipients.set(claimNullifier, input.recipient ?? recipient);
-        return { nullifier: claimNullifier, proofGenerationMs: performance.now() - started };
+        return { nullifier: claimNullifier, timings: { simulationMs: performance.now() - started, measurementProvenance: 'reference_simulation' } };
       },
       async payoutReward(claimNullifier) {
         if (!usedNullifiers.has(claimNullifier)) throw new Error('claim not verified');
@@ -431,7 +445,7 @@ async function main(): Promise<void> {
   // Live execution remains opt-in through PROOFPERKS_DEMO_MODE=live.
   const mode = process.env.PROOFPERKS_DEMO_MODE ?? 'reference';
   const network = (process.env.PROOFPERKS_NETWORK ?? 'local') as Network;
-  assertCondition(network === 'local' || network === 'testnet', 'PROOFPERKS_NETWORK must be local or testnet');
+  assertCondition(network === 'local' || network === 'testnet' || network === 'preprod', 'PROOFPERKS_NETWORK must be local, testnet, or preprod');
 
   printHeader('PROOFPERKS WAVE 1 DEMO');
   console.log(`Mode: ${mode}`);

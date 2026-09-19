@@ -18,13 +18,16 @@
   "homepage": "https://github.com/SuryaXyz-art/Proofperks#readme",
   "scripts": {
     "compile": "node scripts/compile.mjs",
-    "build": "tsc --project tsconfig.build.json && node scripts/copy-managed.mjs",
+    "build": "tsc --project tsconfig.build.json",
     "typecheck": "tsc --project tsconfig.json --noEmit",
-    "test": "node --test test/proofperks.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:generated": "node --test test/credentials.test.mjs test/protocol-invariants.test.mjs",
+    "test:integration": "node --test test/proofperks.test.mjs"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0",
     "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
     "buffer": "6.0.3"
   },
   "devDependencies": {

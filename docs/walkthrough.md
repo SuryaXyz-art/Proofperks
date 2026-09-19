@@ -23,13 +23,14 @@ Implemented:
 - Preprod configuration and a headless `deploy:preprod` command using Midnight.js.
 - Minimal React organizer dashboard with Midnight DApp Connector wallet connection, session-only approval queue, on-chain issuer approval, public claim count, commitment root, and remaining-budget metrics.
 - Organizer revoke control for issuer-signed future-claim revocations; target secrets remain session-only.
+- Contributor credential import, eligibility checking against the latest public commitment tree, recipient confirmation, separate Claim and Collect Reward actions, and encrypted backup/import that never persists secrets in browser storage.
+- Typed client validation shared by browser and CLI paths for wallet network/capabilities, deployment address, generated artifacts, and private-state scoping.
 
 Not implemented:
 
 - A completed live Preprod deployment from this workspace.
-- Contributor claim controls in the UI.
 - Custom reward-token minting or treasury management.
-- UI Merkle-path indexing for contributor claims.
+- Live wallet/prover/chain validation from this workspace; these browser flows still require a configured Preprod deployment and prover.
 - A captured real-testkit timing report from this workspace; the latest run was explicitly skipped because Docker/testkit infrastructure is unavailable here.
 
 ## Privacy model
@@ -59,11 +60,13 @@ git clone https://github.com/SuryaXyz-art/Proofperks.git
 cd proofperks
 npm install
 npm run compile
-npm test
+npm run test:generated
+npm run test:integration
+npm run test:release
 npm run build:ui
 ```
 
-`compact compile` successfully builds the Compact source and generated assets. `npm test` requires Docker Desktop for the local testkit environment, or a configured `MN_TEST_ENVIRONMENT`. With that infrastructure, it runs the three real Compact scenarios and labels timings `REAL COMPACT/TESTKIT`; unavailable infrastructure produces explicit skips and never invokes a mock. The latest run here was skipped, so no real proving-time numbers are claimed for this checkout.
+`compact compile` successfully builds the Compact source and generated assets. `npm run test:generated` checks the canonical generated wrapper and protocol helpers. `npm run test:integration` requires Docker Desktop with `contract/compose.yml`, or a configured `MN_TEST_ENVIRONMENT`; it runs the real Compact/testkit scenarios and labels timings `REAL COMPACT/TESTKIT`. Unavailable infrastructure produces explicit skips and never invokes a mock. `npm run test:release` is the submission gate and fails when required integration tests are skipped or zero tests execute. The latest run here was unavailable, so no real proving-time numbers are claimed for this checkout.
 
 The compile command runs Compact and builds the generated TypeScript contract wrapper. On Windows, the repository invokes Compact inside WSL automatically; native Windows is not supported by Compact.
 
@@ -79,14 +82,28 @@ To deploy to Preprod, start the proof server, provide a funded headless wallet s
 ```powershell
 docker run -p 6300:6300 midnightntwrk/proof-server:8.1.0 midnight-proof-server -v
 $env:PROOFPERKS_WALLET_SEED="<32-byte-hex-seed>"
+$env:PROOFPERKS_ISSUER_SECRET="<32-byte-hex-issuer-secret>"
 $env:PROOFPERKS_ISSUER_PUBLIC_KEY="<32-byte-hex-key>"
+$env:PROOFPERKS_CREDENTIAL_NETWORK_ID="<32-byte-hex-network-scope>"
+$env:PROOFPERKS_CREDENTIAL_DEPLOYMENT_ID="<32-byte-hex-deployment-scope>"
 $env:PROOFPERKS_PRIVATE_STATE_PASSWORD="<strong-local-password>"
 npm run deploy:preprod
 ```
 
 Record the printed contract address for the UI.
 
-Fund the deployed contract with native Preprod test token (tNIGHT) before processing claims. The deployment’s `PROOFPERKS_REWARD_BUDGET` value is the public remaining-budget cap shown in the dashboard. A successful `claim_reward(recipient)` records the recipient and nullifier; the separate `payout_reward(nullifier)` circuit then sends exactly 1,000 base units to that recorded address and decrements the cap. The payout transaction cannot create, alter, or bypass the privacy proof state.
+The deployment writes `deployments/preprod.json` only after public-state confirmation and preserves the exact manifest-listed circuit bundle under `deployments/preprod-circuit-bundle/`. Then fund and verify without blind retries:
+
+```powershell
+$env:PROOFPERKS_FUND_REWARD_POOL="1000"
+npm run fund:preprod
+npm run verify:preprod
+npm run smoke:preprod
+```
+
+`verify:preprod` reports actual native-token balance held by the contract separately from the campaign budget cap. `smoke:preprod` requires additional private contributor credentials in the local environment and performs one approval, claim, and payout smoke flow.
+
+Set `PROOFPERKS_FUND_REWARD_POOL` to fund the deployed contract through the issuer-authenticated `fund_reward_pool` circuit. This actual native-token balance is separate from `PROOFPERKS_REWARD_BUDGET`, the public campaign cap. A successful `claim_reward(recipient)` reserves exactly 1,000 base units and binds the recipient; `payout_reward(nullifier)` discharges that reservation only after the transfer succeeds. A failed payout leaves the reservation retryable without another claim.
 
 For the Wave 1 narration, run the explicit local reference mode:
 
@@ -127,7 +144,7 @@ npm run pilot:export -- --input .\pilot-events.jsonl --output .\pilot-metrics.js
 
 The runner keeps the valid participant batch metrics separate from its intentional duplicate-nullifier race probe. These are local reference timings, not live proof-server timings.
 
-For live local/testnet execution, set `PROOFPERKS_DEMO_MODE=live` and point `PROOFPERKS_DEMO_ADAPTER` to a module exporting `createProofPerksDeployment`. The adapter must connect the generated Compact contract to Midnight.js, the wallet, the indexer, the proof server, and the selected network. `cli/demo.ts` documents the required adapter methods.
+For live Preprod execution, first complete the deployment/funding flow so `deployments/preprod.json` exists, then set `PROOFPERKS_DEMO_MODE=live`, `PROOFPERKS_NETWORK=preprod`, and point `PROOFPERKS_DEMO_ADAPTER` to `cli/src/preprod-demo-adapter.ts`. The adapter connects the generated Compact contract to Midnight.js, the wallet, indexer, proof server, and current Merkle path. It requires private wallet/prover configuration and fresh scenario credentials; it measures complete transaction time, not isolated prover time, unless the provider supplies that separately.
 
 ## Known limitations
 

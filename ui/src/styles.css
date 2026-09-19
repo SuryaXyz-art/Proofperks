@@ -29,6 +29,16 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--mint-dark); background: var(--mint); font-size: 15px; }
 .topbar-actions { display: flex; align-items: center; gap: 16px; }
 .network-pill, .privacy-badge, .wallet-badge { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.role-switch { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; flex-wrap: wrap; }
+.role-help { color: var(--muted); font-size: 12px; }
+.contributor-card { margin-bottom: 20px; }
+.contributor-card .form-row { align-items: end; }
+.recipient-confirm, .stage-line, .backup-box { display: grid; gap: 8px; margin-top: 16px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.025); }
+.recipient-confirm span, .stage-line span, .backup-box span { color: var(--muted); font-size: 12px; }
+.recipient-confirm label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.fund-box { display: grid; gap: 12px; margin-top: 16px; padding: 16px; border: 1px solid #43516b; border-radius: 10px; background: #17202e; }
+.fund-box p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 4px #c8f66d1c; }
 
 .hero { padding: 70px 0 52px; }

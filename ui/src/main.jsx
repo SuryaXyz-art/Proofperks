@@ -7,12 +7,18 @@ import {
   connectPreprodWallet,
   createProofPerksClient,
   createProofPerksReissueClient,
+  createContributorClient,
+  readContributorClaimStatus,
   readCampaignDashboard,
+  exportEncryptedCredential,
+  importEncryptedCredential,
 } from './midnight.js';
 import './styles.css';
 
 const defaultContractAddress = import.meta.env.VITE_PROOFPERKS_CONTRACT_ADDRESS ?? '';
 const defaultIssuerPublicKey = import.meta.env.VITE_PROOFPERKS_ISSUER_PUBLIC_KEY ?? '';
+const credentialNetworkId = import.meta.env.VITE_PROOFPERKS_CREDENTIAL_NETWORK_ID ?? '';
+const credentialDeploymentId = import.meta.env.VITE_PROOFPERKS_CREDENTIAL_DEPLOYMENT_ID ?? '';
 
 function shortAddress(value) {
   if (!value) return 'Not connected';
@@ -41,6 +47,7 @@ function App() {
   const [oldContributorSecret, setOldContributorSecret] = useState('');
   const [newContributorSecret, setNewContributorSecret] = useState('');
   const [newPoints, setNewPoints] = useState('125');
+  const [fundingAmount, setFundingAmount] = useState('1000');
   const [points, setPoints] = useState('125');
   const [pendingApprovals, setPendingApprovals] = useState([]);
   const [dashboard, setDashboard] = useState(null);
@@ -48,9 +55,17 @@ function App() {
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [message, setMessage] = useState('Connect an organizer wallet to load the campaign.');
   const [dashboardError, setDashboardError] = useState('');
+  const [role, setRole] = useState('contributor');
+  const [contributorStatus, setContributorStatus] = useState(null);
+  const [recipientConfirmed, setRecipientConfirmed] = useState(false);
+  const [credentialFile, setCredentialFile] = useState(null);
+  const [backupPassword, setBackupPassword] = useState('');
+  const [importPassword, setImportPassword] = useState('');
+  const [claimStage, setClaimStage] = useState('idle');
+  const [contributorCredential, setContributorCredential] = useState({ anchor: '', secret: '', points: '125' });
 
   async function refreshDashboard() {
-    if (!wallet || !contractAddress) return;
+    if (!contractAddress) return;
     setLoadingDashboard(true);
     setDashboardError('');
     try {
@@ -71,12 +86,102 @@ function App() {
     try {
       const connected = await connectPreprodWallet();
       setWallet(connected);
-      setMessage('Organizer wallet connected to Midnight Preprod.');
+      setMessage('Wallet connected to Midnight Preprod. Network and wallet capabilities validated.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
+  }
+
+  function disconnectWallet() {
+    setWallet(null);
+    setContributorStatus(null);
+    setRecipientConfirmed(false);
+    setMessage('Wallet disconnected. Public campaign reads remain available.');
+  }
+
+  async function handleCheckCredential() {
+    setBusy(true);
+    setClaimStage('reading-chain');
+    try {
+      if (!wallet) throw new Error('Connect the contributor wallet first.');
+      const status = await readContributorClaimStatus({
+        contractAddress,
+        contributorSecret: contributorCredential.secret,
+        networkId: credentialNetworkId,
+        deploymentId: credentialDeploymentId,
+      });
+      setContributorStatus(status);
+      setMessage(status.paid ? 'This credential has already been paid.' : status.pendingPayout ? 'Claim confirmed. Collect Reward is ready.' : status.claimed ? 'Claim recorded. Waiting for payout.' : 'Credential status checked against the latest public ledger.');
+      setClaimStage('confirmed');
+    } catch (error) {
+      setClaimStage('failed');
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally { setBusy(false); }
+  }
+
+  async function handleClaim() {
+    setBusy(true);
+    setClaimStage('preparing-proof');
+    try {
+      if (!wallet) throw new Error('Connect the contributor wallet first.');
+      if (!recipientConfirmed) throw new Error('Confirm the connected wallet address before claiming.');
+      const client = await createContributorClient({ wallet, contractAddress, contributorAnchor: contributorCredential.anchor, contributorSecret: contributorCredential.secret, points: BigInt(contributorCredential.points), networkId: credentialNetworkId, deploymentId: credentialDeploymentId });
+      setClaimStage('awaiting-signature');
+      const result = await client.claimReward();
+      setClaimStage('submitted');
+      setMessage(`Claim submitted (${result.txHash ?? 'transaction pending'}). Reading the ledger for confirmation…`);
+      await refreshDashboard();
+      await handleCheckCredential();
+      setClaimStage('confirmed');
+    } catch (error) {
+      setClaimStage('failed');
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally { setBusy(false); }
+  }
+
+  async function handleCollectReward() {
+    setBusy(true);
+    setClaimStage('awaiting-signature');
+    try {
+      if (!wallet) throw new Error('Connect the contributor wallet first.');
+      const client = await createContributorClient({ wallet, contractAddress, contributorAnchor: contributorCredential.anchor, contributorSecret: contributorCredential.secret, points: BigInt(contributorCredential.points), networkId: credentialNetworkId, deploymentId: credentialDeploymentId });
+      if (!contributorStatus?.pendingPayout) throw new Error('No pending payout is recorded for this credential.');
+      const result = await client.payoutReward(contributorStatus.nullifier);
+      setClaimStage('submitted');
+      setMessage(`Reward collection submitted (${result.txHash ?? 'transaction pending'}). Confirming ledger state…`);
+      await refreshDashboard();
+      await handleCheckCredential();
+      setClaimStage('confirmed');
+    } catch (error) {
+      setClaimStage('failed');
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally { setBusy(false); }
+  }
+
+  async function handleBackup() {
+    try {
+      const backup = await exportEncryptedCredential({ anchor: contributorCredential.anchor, secret: contributorCredential.secret, points: contributorCredential.points, networkId: credentialNetworkId, deploymentId: credentialDeploymentId, contractAddress }, backupPassword);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([backup], { type: 'application/json' }));
+      link.download = 'proofperks-credential-backup.json';
+      link.click();
+      URL.revokeObjectURL(link.href);
+      setMessage('Encrypted credential backup downloaded. Store it offline with its password.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+  }
+
+  async function handleImport(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const credential = await importEncryptedCredential(await file.text(), importPassword);
+      if (credential.contractAddress && credential.contractAddress !== contractAddress) throw new Error('Backup belongs to a different deployment.');
+      setContributorCredential({ anchor: credential.anchor, secret: credential.secret, points: String(credential.points) });
+      setMessage('Encrypted credential imported into this session only.');
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    event.target.value = '';
   }
 
   function handleAddPending(event) {
@@ -117,10 +222,12 @@ function App() {
         contributorAnchor: item.contributorAnchor,
         contributorSecret: item.contributorSecret,
         points: BigInt(item.points),
+        networkId: credentialNetworkId,
+        deploymentId: credentialDeploymentId,
       });
       const result = await proofPerks.approveContribution();
       setPendingApprovals((current) => current.filter((candidate) => candidate.id !== item.id));
-      setMessage(`Contribution approved on-chain. Transaction: ${result.txHash ?? 'submitted'}`);
+      setMessage(`Approval submitted (${result.txHash ?? 'pending'}). Public ledger readback refreshed.`);
       await refreshDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -146,10 +253,12 @@ function App() {
         issuerSecret,
         contributorSecret: revokeSecret,
         points: 0n,
+        networkId: credentialNetworkId,
+        deploymentId: credentialDeploymentId,
       });
       const result = await proofPerks.revokeContribution();
       setRevokeSecret('');
-      setMessage(`Credential revoked for future claims. Transaction: ${result.txHash ?? 'submitted'}`);
+      setMessage(`Revocation submitted (${result.txHash ?? 'pending'}). Public ledger readback refreshed; future claims are blocked when confirmed.`);
       await refreshDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -182,18 +291,35 @@ function App() {
         oldContributorSecret,
         newContributorSecret,
         newPoints: newValue,
+        networkId: credentialNetworkId,
+        deploymentId: credentialDeploymentId,
       });
       const result = await proofPerks.reissueContribution();
       setReissueAnchor('');
       setOldContributorSecret('');
       setNewContributorSecret('');
-      setMessage(`Credential re-issued. Old credential revoked; new commitment submitted. Transaction: ${result.txHash ?? 'submitted'}`);
+      setMessage(`Recovery submitted (${result.txHash ?? 'pending'}). Public ledger readback refreshed; the old credential is revoked when confirmed.`);
       await refreshDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleFund(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      if (!wallet) throw new Error('Connect the organizer wallet first.');
+      const amount = BigInt(fundingAmount);
+      if (amount <= 0n) throw new Error('Funding amount must be positive.');
+      const proofPerks = await createProofPerksClient({ wallet, contractAddress, issuerPublicKey, issuerSecret, contributorAnchor: contributorSecret || issuerSecret, contributorSecret: contributorSecret || issuerSecret, points: 0n, networkId: credentialNetworkId, deploymentId: credentialDeploymentId });
+      const result = await proofPerks.fundRewardPool(amount);
+      setMessage(`Reward pool funding submitted (${result.txHash ?? 'pending'}). Refreshing public accounting…`);
+      await refreshDashboard();
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
   }
 
   function removePending(id) {
@@ -207,9 +333,7 @@ function App() {
         <div className="brand"><span className="brand-mark">P</span><span>ProofPerks</span></div>
         <div className="topbar-actions">
           <span className="network-pill"><span className="live-dot" /> Midnight Preprod</span>
-          <button className="secondary compact" onClick={handleConnect} disabled={busy}>
-            {wallet ? shortAddress(wallet.address) : 'Connect wallet'}
-          </button>
+          {wallet ? <button className="secondary compact" onClick={disconnectWallet} disabled={busy}>{shortAddress(wallet.address)} · Disconnect</button> : <button className="secondary compact" onClick={handleConnect} disabled={busy}>Connect wallet</button>}
         </div>
       </header>
 
@@ -222,6 +346,12 @@ function App() {
         <div className="hero-note"><span className="note-kicker">SESSION BOUNDARY</span><strong>No browser storage</strong><span>Secrets and raw points are cleared when this tab session ends.</span></div>
       </section>
 
+      <section className="role-switch" aria-label="ProofPerks role">
+        <button className={role === 'contributor' ? 'primary' : 'secondary'} onClick={() => setRole('contributor')}>Contributor claim</button>
+        <button className={role === 'organizer' ? 'primary' : 'secondary'} onClick={() => setRole('organizer')}>Organizer console</button>
+        <span className="role-help">Public campaign state is readable without a wallet. Wallet actions require Midnight Preprod.</span>
+      </section>
+
       <section className="metrics" aria-label="Campaign overview">
         <Metric label="Approved commitments" value={dashboard ? formatUnits(dashboard.approvedCommitmentCount) : '—'} detail="public Merkle tree leaves" />
         <Metric label="Claims made" value={dashboard ? formatUnits(dashboard.claimCount) : '—'} detail="public nullifier count" />
@@ -230,6 +360,20 @@ function App() {
       </section>
 
       {dashboardError && <div className="alert" role="alert">Could not load public campaign state: {dashboardError}</div>}
+
+      {role === 'contributor' && <section className="card contributor-card">
+        <div className="card-heading"><div><p className="eyebrow">PRIVATE ELIGIBILITY</p><h2>Claim your reward</h2></div><span className="privacy-badge">Local only</span></div>
+        <p className="hint">Import the credential you received from the issuer. ProofPerks reads the latest public commitment tree immediately before proving; your secret, anchor, and raw points stay in this tab.</p>
+        <div className="form-row">
+          <label>Recovery anchor <span>private witness</span><input type="password" value={contributorCredential.anchor} onChange={(event) => setContributorCredential({ ...contributorCredential, anchor: event.target.value })} placeholder="32-byte credential anchor" /></label>
+          <label>Contributor secret <span>private witness</span><input type="password" value={contributorCredential.secret} onChange={(event) => setContributorCredential({ ...contributorCredential, secret: event.target.value })} placeholder="32-byte credential secret" /></label>
+          <label>Approved points <span>private witness</span><input type="number" min="0" value={contributorCredential.points} onChange={(event) => setContributorCredential({ ...contributorCredential, points: event.target.value })} /></label>
+        </div>
+        <div className="recipient-confirm"><strong>Recipient</strong><span>{wallet ? shortAddress(wallet.address) : 'Connect wallet to choose a recipient'}</span><label><input type="checkbox" checked={recipientConfirmed} onChange={(event) => setRecipientConfirmed(event.target.checked)} disabled={!wallet} /> I confirm this connected wallet receives the fixed reward.</label></div>
+        <div className="button-row"><button className="secondary" onClick={handleCheckCredential} disabled={busy || !wallet}>Check eligibility</button><button className="primary" onClick={handleClaim} disabled={busy || !wallet || !recipientConfirmed || contributorStatus?.claimed}>Claim</button><button className="secondary" onClick={handleCollectReward} disabled={busy || !wallet || !contributorStatus?.pendingPayout}>Collect Reward</button></div>
+        <div className="stage-line" role="status"><strong>Stage:</strong> {claimStage} <span>{contributorStatus?.paid ? 'Reward paid' : contributorStatus?.pendingPayout ? 'Payout pending collection' : ''}</span></div>
+        <div className="backup-box"><strong>Encrypted credential backup</strong><span>Recovery requires this file, its password, the same deployment, and a connected wallet. ProofPerks cannot recover a lost secret.</span><div className="form-row"><input type="password" value={backupPassword} onChange={(event) => setBackupPassword(event.target.value)} placeholder="Backup password (12+ characters)" /><button className="secondary" onClick={handleBackup} disabled={!contributorCredential.secret}>Download backup</button></div><div className="form-row"><input type="password" value={importPassword} onChange={(event) => setImportPassword(event.target.value)} placeholder="Backup password" /><input type="file" accept="application/json" onChange={handleImport} /></div></div>
+      </section>}
 
       <section className="workspace-grid">
         <section className="card queue-card">
@@ -279,6 +423,12 @@ function App() {
             <label>New points <span>private witness</span><input type="number" min="0" value={newPoints} onChange={(event) => setNewPoints(event.target.value)} /></label>
             <label>New contributor secret <span>private witness</span><input type="password" value={newContributorSecret} onChange={(event) => setNewContributorSecret(event.target.value)} placeholder="Replacement secret" /></label>
             <button className="secondary" type="submit" disabled={busy || !wallet}>Re-issue credential</button>
+          </form>
+          <form className="fund-box" onSubmit={handleFund}>
+            <div><p className="eyebrow">TREASURY CONTROL</p><h3>Fund reward pool</h3></div>
+            <p>Funding is separate from the campaign budget cap. The issuer wallet signs this native-token transfer.</p>
+            <label>Native test-token amount<input type="number" min="1" value={fundingAmount} onChange={(event) => setFundingAmount(event.target.value)} /></label>
+            <button className="secondary" type="submit" disabled={busy || !wallet}>Fund contract</button>
           </form>
           <div className="config-footer"><span>Connected wallet</span><strong>{shortAddress(wallet?.address)}</strong></div>
           <button className="secondary refresh" onClick={refreshDashboard} disabled={loadingDashboard || !wallet || !contractAddress}>{loadingDashboard ? 'Refreshing…' : 'Refresh public state'}</button>

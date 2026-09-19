@@ -1,0 +1,59 @@
+name: ProofPerks CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.2
+          cache: npm
+      - name: Install pinned dependencies
+        run: npm ci
+      - name: Install pinned Compact compiler
+        shell: bash
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/midnightntwrk/compact/releases/latest/download/compact-installer.sh | sh
+          source "$HOME/.bashrc"
+          compact update 0.31.1
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          compact --version
+      - name: Compile Compact and build generated wrapper
+        run: npm run compile
+      - name: Validate generated artifact hashes
+        run: npm run validate:artifacts
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Generated-contract tests
+        run: npm run test:generated
+      - name: Client and doctor tests
+        run: npm run test:client && npm run test:doctor
+      - name: UI production build
+        run: npm run build --workspace @proofperks/ui
+      - name: Upload generated artifact evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proofperks-generated-manifest-${{ github.sha }}
+          path: contract/managed/manifest.json
+          if-no-files-found: error
+
+  integration-status:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report required live integration status
+        run: |
+          echo "REQUIRED LIVE INTEGRATION: INCOMPLETE"
+          echo "The Midnight node, indexer, wallet, and proof-server services are not started in the ordinary PR job."
+          echo "Run npm run test:release in the pinned project-scoped environment before claiming real proving or chain evidence."

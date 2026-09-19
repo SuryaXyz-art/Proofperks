@@ -2,6 +2,7 @@
   "name": "proofperks",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "ProofPerks — a Midnight Network Compact dApp scaffold.",
   "license": "Apache-2.0",
   "repository": {
@@ -17,16 +18,38 @@
     "cli",
     "ui"
   ],
+  "dependencies": {
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+  },
   "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "test:doctor": "node --test scripts/doctor.test.mjs",
     "compile": "npm run compile --workspace @proofperks/contract && npm run build --workspace @proofperks/contract",
+    "typecheck": "npm run typecheck --workspace @proofperks/contract && npm run typecheck --workspace @proofperks/cli",
     "test": "npm run test --workspaces --if-present",
+    "test:generated": "npm run test:generated --workspace @proofperks/contract",
+    "test:client": "node --experimental-strip-types --test test/client.test.mjs",
+    "test:integration": "npm run test:integration --workspace @proofperks/contract",
+    "test:release": "npm run compile && node scripts/release-test.mjs",
+    "validate:artifacts": "node scripts/validate-artifacts.mjs",
     "demo": "npm run demo --workspace @proofperks/cli",
     "pilot:load": "node cli/load-test.mjs",
     "pilot:export": "node cli/export-pilot-metrics.mjs",
     "deploy:preprod": "npm run compile && npm run deploy:preprod --workspace @proofperks/cli",
-    "build:ui": "npm run compile && npm run build --workspace @proofperks/ui"
+    "fund:preprod": "npm run fund:preprod --workspace @proofperks/cli",
+    "verify:preprod": "npm run verify:preprod --workspace @proofperks/cli",
+    "smoke:preprod": "npm run smoke:preprod --workspace @proofperks/cli",
+    "build:ui": "npm run compile && npm run build --workspace @proofperks/ui",
+    "build:vercel": "node scripts/build-vercel.mjs"
   },
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
+  },
+  "overrides": {
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
+    "@midnight-ntwrk/compact-runtime@0.16.0": {
+      "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+    },
+    "@midnight-ntwrk/wallet-sdk": "1.1.0"
   }
 }

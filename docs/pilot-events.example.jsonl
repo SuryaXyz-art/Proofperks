@@ -1,8 +1,8 @@
 # Safe example only: no participant, wallet, credential, or transaction data.
 {"type":"approval","status":"success"}
-{"type":"claim","status":"success","provingTimeMs":842.4}
+{"type":"claim","status":"success","simulationTimeMs":842.4,"measurementProvenance":"reference_simulation"}
 {"type":"approval","status":"success"}
-{"type":"claim","status":"failure","failureCategory":"invalid_credential","provingTimeMs":91.2}
+{"type":"claim","status":"failure","failureCategory":"invalid_credential","simulationTimeMs":91.2,"measurementProvenance":"reference_simulation"}
 {"type":"approval","status":"success"}
-{"type":"claim","status":"success","provingTimeMs":768.9}
-{"type":"claim","status":"failure","failureCategory":"duplicate_claim","provingTimeMs":64.1}
+{"type":"claim","status":"success","simulationTimeMs":768.9,"measurementProvenance":"reference_simulation"}
+{"type":"claim","status":"failure","failureCategory":"duplicate_claim","simulationTimeMs":64.1,"measurementProvenance":"reference_simulation"}

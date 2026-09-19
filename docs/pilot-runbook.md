@@ -6,7 +6,7 @@
 
 Run a small, supervised pilot with 3–5 real community contributors to learn whether an approved private reward claim feels understandable, trustworthy, and fast enough to use. This is a product-learning exercise, not a production rewards program.
 
-Important current-scope note: the repository has the organizer dashboard, but it does not yet have a contributor-facing claim screen. Until that UI is delivered, use an operator-assisted claim flow through a configured live CLI/deployment adapter. Do not describe the current dashboard as a complete contributor experience.
+Important current-scope note: the repository has organizer and contributor controls, but their live wallet/prover/chain lifecycle has not been verified here. Use a configured live deployment adapter or hosted wallet session for the supervised run; do not describe a local build or reference harness as live evidence.
 
 ## Before inviting contributors
 
@@ -42,13 +42,13 @@ Suggested participant mix: 3–5 contributors with different levels of Web3 and 
 6. **Claim.** Until the contributor UI exists, the facilitator runs the configured live CLI adapter in a private terminal. The contributor supplies the same secret locally and the wallet recipient address. Measure the wall-clock proving duration returned by the adapter or by the CLI timer. Record only one safe claim event:
 
    ```json
-   {"type":"claim","status":"success","provingTimeMs":842.4}
+   {"type":"claim","status":"success","simulationTimeMs":842.4,"measurementProvenance":"reference_simulation"}
    ```
 
    A rejected attempt is recorded without the secret, commitment, nullifier, or wallet address:
 
    ```json
-   {"type":"claim","status":"failure","failureCategory":"duplicate_claim","provingTimeMs":91.2}
+   {"type":"claim","status":"failure","failureCategory":"duplicate_claim","transactionTimeMs":91.2,"measurementProvenance":"live_midnight_transaction"}
    ```
 
 7. **Payout and confirmation.** If the pilot includes payout, run the separate payout step after the successful claim. Tell the contributor the fixed test-token amount and wait for wallet/indexer confirmation. Do not count a payout retry as a second claim.
@@ -63,8 +63,9 @@ The exporter accepts JSONL, one event per line. These are the only allowed field
 | --- | --- | --- |
 | `type` | `approval` or `claim` | Operation category |
 | `status` | `success` / `accepted` or `failure` / `rejected` | Outcome |
-| `provingTimeMs` | non-negative number, claims only | Wall-clock proving duration; include on rejected claims when measured |
-| `failureCategory` | short category | Use `invalid_credential`, `threshold_not_met`, `duplicate_claim`, `wallet_or_network`, or `unknown_failure` |
+| `simulationTimeMs`, `transactionTimeMs`, `provingTimeMs` | non-negative number, claims only | Keep simulation, complete transaction, and independently measured proving durations separate. |
+| `measurementProvenance` | fixed enum | Required with any timing: `reference_simulation`, `compact_testkit`, `live_midnight_transaction`, `pilot_observation`, or `unavailable`. |
+| `failureCategory` | fixed enum | Use `invalid_credential`, `threshold_not_met`, `duplicate_claim`, `payout_duplicate`, `invalid_merkle_path`, `revoked_credential`, `wallet_rejected`, `wrong_network`, `prover_unavailable`, `insufficient_rewards`, `insufficient_budget`, `issuer_unauthorized`, `transaction_failed`, or `unknown_failure`. |
 
 Do not add `participantId`, names, wallet addresses, secrets, raw points, commitments, nullifiers, transaction hashes, or free-form error messages. The exporter rejects unsupported fields as a safety check.
 
