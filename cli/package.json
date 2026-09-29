@@ -22,6 +22,7 @@
     "fund:preprod": "node --experimental-strip-types src/preprod-ops.ts fund",
     "verify:preprod": "node --experimental-strip-types src/preprod-ops.ts verify",
     "smoke:preprod": "node --experimental-strip-types src/preprod-smoke.ts",
+    "e2e:hosted": "node --experimental-strip-types src/preprod-hosted-e2e.ts",
     "interact": "node src/interact.mjs",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "demo": "node --experimental-strip-types demo.ts",

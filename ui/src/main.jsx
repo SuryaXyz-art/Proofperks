@@ -53,7 +53,7 @@ function App() {
   const [dashboard, setDashboard] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
-  const [message, setMessage] = useState('Connect an organizer wallet to load the campaign.');
+  const [message, setMessage] = useState('Public campaign state loads automatically. Connect a Midnight Preprod wallet to claim a reward or manage the campaign.');
   const [dashboardError, setDashboardError] = useState('');
   const [role, setRole] = useState('contributor');
   const [contributorStatus, setContributorStatus] = useState(null);
@@ -109,11 +109,20 @@ function App() {
       const status = await readContributorClaimStatus({
         contractAddress,
         contributorSecret: contributorCredential.secret,
+        contributorAnchor: contributorCredential.anchor,
+        points: contributorCredential.points,
         networkId: credentialNetworkId,
         deploymentId: credentialDeploymentId,
       });
       setContributorStatus(status);
-      setMessage(status.paid ? 'This credential has already been paid.' : status.pendingPayout ? 'Claim confirmed. Collect Reward is ready.' : status.claimed ? 'Claim recorded. Waiting for payout.' : 'Credential status checked against the latest public ledger.');
+      setMessage(status.paid ? 'This credential has already been paid.'
+        : status.pendingPayout ? 'Claim confirmed. Collect Reward is ready.'
+        : status.claimed ? 'Claim recorded. Waiting for payout.'
+        : status.revoked ? 'This credential was revoked by the issuer and cannot be claimed.'
+        : status.approved === false ? 'This credential is not approved on-chain. Check the anchor, secret and points exactly match what the issuer approved.'
+        : status.meetsThreshold === false ? `Approved, but below the campaign threshold of ${status.thresholdPoints} points.`
+        : status.eligible ? 'Eligible: this credential is approved and meets the threshold. Confirm the recipient, then Claim.'
+        : 'Credential status checked against the latest public ledger.');
       setClaimStage('confirmed');
     } catch (error) {
       setClaimStage('failed');
@@ -339,7 +348,7 @@ function App() {
 
       <section className="hero dashboard-hero">
         <div>
-          <p className="eyebrow">ORGANIZER CONSOLE / SINGLE CAMPAIGN</p>
+          <p className="eyebrow">PRIVATE COMMUNITY REWARDS / SINGLE CAMPAIGN</p>
           <h1>Approve the work.<br /><em>Keep the proof private.</em></h1>
           <p className="lede">Review contribution credentials in this session, approve eligible work with your wallet, and watch public campaign aggregates update on Midnight.</p>
         </div>
@@ -359,6 +368,8 @@ function App() {
         <Metric label="Reward per claim" value={dashboard ? formatUnits(dashboard.rewardAmount) : '—'} detail="fixed native-token units" />
       </section>
 
+      <p className="status status-banner" role="status" aria-live="polite">{message}</p>
+
       {dashboardError && <div className="alert" role="alert">Could not load public campaign state: {dashboardError}</div>}
 
       {role === 'contributor' && <section className="card contributor-card">
@@ -375,7 +386,7 @@ function App() {
         <div className="backup-box"><strong>Encrypted credential backup</strong><span>Recovery requires this file, its password, the same deployment, and a connected wallet. ProofPerks cannot recover a lost secret.</span><div className="form-row"><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={backupPassword} onChange={(event) => setBackupPassword(event.target.value)} placeholder="Backup password (12+ characters)" /><button className="secondary" onClick={handleBackup} disabled={!contributorCredential.secret}>Download backup</button></div><div className="form-row"><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={importPassword} onChange={(event) => setImportPassword(event.target.value)} placeholder="Backup password" /><input type="file" accept="application/json" onChange={handleImport} /></div></div>
       </section>}
 
-      <section className="workspace-grid">
+      {role === 'organizer' && <section className="workspace-grid">
         <section className="card queue-card">
           <div className="card-heading">
             <div><p className="eyebrow">PRIVATE INTAKE</p><h2>Pending approvals <span className="count">{pendingApprovals.length}</span></h2></div>
@@ -431,13 +442,12 @@ function App() {
             <button className="secondary" type="submit" disabled={busy || !wallet}>Fund contract</button>
           </form>
           <div className="config-footer"><span>Connected wallet</span><strong>{shortAddress(wallet?.address)}</strong></div>
-          <button className="secondary refresh" onClick={refreshDashboard} disabled={loadingDashboard || !wallet || !contractAddress}>{loadingDashboard ? 'Refreshing…' : 'Refresh public state'}</button>
-          <p className="status" role="status">{message}</p>
+          <button className="secondary refresh" onClick={refreshDashboard} disabled={loadingDashboard || !contractAddress}>{loadingDashboard ? 'Refreshing…' : 'Refresh public state'}</button>
         </aside>
-      </section>
+      </section>}
 
       <section className="ledger-strip">
-        <div><span className="strip-label">COMMITMENTS ROOT</span><code>{dashboard?.commitmentsRoot ?? 'Connect wallet to read public state'}</code></div>
+        <div><span className="strip-label">COMMITMENTS ROOT</span><code>{dashboard?.commitmentsRoot ?? 'Loading public state…'}</code></div>
         <div><span className="strip-label">CAMPAIGN</span><strong>{dashboard ? `#${dashboard.campaign.id.toString()}` : '—'}</strong></div>
         <div><span className="strip-label">THRESHOLD</span><strong>{dashboard ? `${formatUnits(dashboard.campaign.thresholdPoints)} points` : '—'}</strong></div>
       </section>

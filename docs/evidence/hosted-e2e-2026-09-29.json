@@ -1,0 +1,72 @@
+{
+  "target": "https://proofperks.vercel.app/",
+  "network": "preprod",
+  "passed": 10,
+  "failed": 0,
+  "results": [
+    {
+      "step": "public dashboard loads without a wallet",
+      "ok": true,
+      "detail": "Claims made\n3",
+      "ms": 5066
+    },
+    {
+      "step": "connect wallet",
+      "ok": true,
+      "detail": "Wallet connected to Midnight Preprod. Network and wallet capabilities validated.",
+      "ms": 1012
+    },
+    {
+      "step": "organizer queues a credential",
+      "ok": true,
+      "detail": "Pending approvals 1",
+      "ms": 539
+    },
+    {
+      "step": "organizer approves on-chain",
+      "ok": true,
+      "detail": "Approval submitted (c793c3486e5f6395708071f7bb93c266cbc9923504c8c04947fd46cc299b987a). Public ledger readback refreshed.",
+      "ms": 32361
+    },
+    {
+      "step": "contributor checks eligibility",
+      "ok": true,
+      "detail": "Eligible: this credential is approved and meets the threshold. Confirm the recipient, then Claim.",
+      "ms": 1559
+    },
+    {
+      "step": "tampered points are reported as not approved",
+      "ok": true,
+      "detail": "not approved on-chain. Check the anchor, secret and points exactly match what the issuer approved.",
+      "ms": 2034
+    },
+    {
+      "step": "contributor claims with a ZK proof",
+      "ok": true,
+      "detail": "Claim confirmed. Collect Reward is ready.",
+      "ms": 28854
+    },
+    {
+      "step": "contributor collects the reward",
+      "ok": true,
+      "detail": "already been paid.",
+      "ms": 29368
+    },
+    {
+      "step": "dashboard reflects the paid claim",
+      "ok": true,
+      "detail": "Claims made\n4",
+      "ms": 3
+    },
+    {
+      "step": "second claim is blocked for a paid credential",
+      "ok": true,
+      "detail": "Claim button disabled after payout",
+      "ms": 2
+    }
+  ],
+  "recordedAt": "2026-09-29",
+  "command": "npm run e2e:hosted -- https://proofperks.vercel.app/",
+  "wallet": "Headless Preprod wallet exposed to the page as a DApp-connector v4 wallet (window.midnight) through a CDP bridge to testkit DAppConnectorWalletAdapter. Not the Lace extension.",
+  "prover": "Local proof server 8.1.0 at http://127.0.0.1:6300, reached from the hosted page"
+}

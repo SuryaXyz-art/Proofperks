@@ -10,7 +10,7 @@ import { Transaction } from '@midnight-ntwrk/midnight-js-protocol/ledger';
 import { ContractState as RuntimeContractState, encodeUserAddress } from '@midnight-ntwrk/compact-runtime';
 import { MidnightBech32m, UnshieldedAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import { findDeployedContract, getPublicStates } from '@midnight-ntwrk/midnight-js-contracts';
-import { CompiledProofPerksContract, ledger, proofPerksPrivateStateKey } from '@proofperks/contract';
+import { CompiledProofPerksContract, ledger, proofPerksPrivateStateKey, pureCircuits } from '@proofperks/contract';
 import {
   CREDENTIAL_VERSION,
   bytes32FromHex,
@@ -125,9 +125,9 @@ async function assertBrowserArtifacts() {
 
 function walletRecipient(address) {
   try {
+    // Wallets return bech32 (mn_addr_preprod1…); the circuit's UserAddress wants the raw hex bytes.
     const parsed = MidnightBech32m.parse(address).decode(UnshieldedAddress, PREPROD.networkId);
-    void parsed;
-    return { bytes: encodeUserAddress(address) };
+    return { bytes: encodeUserAddress(parsed.hexString) };
   } catch (error) {
     throw new Error(`The connected wallet returned an invalid recipient address: ${explainClientError(error)}`);
   }
@@ -398,10 +398,28 @@ export async function readCampaignDashboard({ wallet = null, contractAddress }) 
   };
 }
 
-export async function readContributorClaimStatus({ contractAddress, contributorSecret, networkId, deploymentId, campaignId = 1n }) {
+export async function readContributorClaimStatus({ contractAddress, contributorSecret, contributorAnchor, points, networkId, deploymentId, campaignId = 1n }) {
   validateDeploymentAddress(contractAddress);
   const secret = bytes32FromHex(contributorSecret, 'contributorSecret');
   const publicState = await readCampaignDashboard({ contractAddress });
+  const ledgerState = publicState.publicLedger;
+  // Eligibility mirrors the claim_reward asserts so a contributor learns why a claim would fail
+  // before spending time on a proof: approved commitment, not revoked, threshold met.
+  let approved = null;
+  let meetsThreshold = null;
+  if (points !== undefined && points !== '') {
+    const pointsValue = uint64(points, 'points');
+    const commitment = deriveCredentialCommitmentFromHex({ networkId, deploymentId, campaignId, anchor: contributorAnchor || contributorSecret, secret: contributorSecret, points: pointsValue });
+    approved = ledgerState.approvedCommitmentSet.member(commitment);
+    meetsThreshold = pointsValue >= ledgerState.campaign.thresholdPoints;
+  }
+  const revoked = ledgerState.revokedNullifiers.member(pureCircuits.revocationNullifier(
+    CREDENTIAL_VERSION,
+    bytes32FromHex(networkId, 'networkId'),
+    bytes32FromHex(deploymentId, 'deploymentId'),
+    campaignId,
+    secret,
+  ));
   const nullifier = deriveClaimNullifier({
     credentialVersion: CREDENTIAL_VERSION,
     networkId: bytes32FromHex(networkId, 'networkId'),
@@ -412,5 +430,6 @@ export async function readContributorClaimStatus({ contractAddress, contributorS
   const used = publicState.publicLedger.usedNullifiers.member(nullifier);
   const pending = publicState.publicLedger.pendingRewardRecipients.member(nullifier);
   const paid = publicState.publicLedger.paidRewardNullifiers.member(nullifier);
-  return { claimed: used, pendingPayout: pending && !paid, paid, nullifier };
+  const eligible = approved === true && meetsThreshold === true && !revoked && !used && ledgerState.campaign.active;
+  return { claimed: used, pendingPayout: pending && !paid, paid, nullifier, approved, meetsThreshold, revoked, eligible, thresholdPoints: ledgerState.campaign.thresholdPoints };
 }

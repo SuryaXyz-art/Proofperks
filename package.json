@@ -40,6 +40,7 @@
     "fund:preprod": "npm run fund:preprod --workspace @proofperks/cli",
     "verify:preprod": "npm run verify:preprod --workspace @proofperks/cli",
     "smoke:preprod": "npm run smoke:preprod --workspace @proofperks/cli",
+    "e2e:hosted": "npm run e2e:hosted --workspace @proofperks/cli --",
     "build:ui": "npm run compile && npm run build --workspace @proofperks/ui",
     "build:vercel": "node scripts/build-vercel.mjs"
   },

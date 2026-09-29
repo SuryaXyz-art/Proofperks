@@ -9,7 +9,21 @@ The blockers recorded below have been cleared, and the chain flow has been prove
 - Vercel Production: [proofperks.vercel.app](https://proofperks.vercel.app). The remote `build:vercel` hash-checked all 28 circuit artifacts against the deployment record.
 - Headless Chrome load of the production page, with no wallet connected, rendered live public state that matches the chain: 4 approved commitments, 2 claims, 98,000 remaining budget, 1,000 reward per claim. No console errors. The `.env.preprod` path returns 404, so local secrets were not uploaded.
 
-Still open: the wallet-driven browser session (Lace connect, approve, claim, collect) and the failure-state matrix below have not been run in a browser. The same circuits have run live only from the headless CLI.
+### Wallet-driven browser run — 10/10 on production
+
+`npm run e2e:hosted -- https://proofperks.vercel.app/` ([evidence](./evidence/hosted-e2e-2026-09-29.json)) drove the hosted console in headless Chrome with a DApp-connector v4 wallet bridged to the funded headless Preprod wallet. Every step passed: public dashboard without a wallet, connect, queue a credential, on-chain approval (`c793c348…9b987a`), eligibility, altered points rejected as not approved, ZK claim confirmed, reward collected and marked paid, claim count incremented, and a second claim blocked.
+
+The first run against the previous build found the bugs fixed in this release:
+
+- The claim sent the wallet's bech32 address to `encodeUserAddress`, which needs hex, so every browser claim failed.
+- Status and error messages rendered only in the organizer sidebar, so a contributor saw "Stage: failed" with no reason.
+- "Check eligibility" never checked approval, revocation or threshold.
+- The organizer workspace, including the issuer-secret field, was shown in contributor mode.
+- "Refresh public state" required a wallet although public reads do not.
+
+Failure-state matrix, updated: duplicate claim (UI blocks it; the contract rejects it in the reference demo) and tampered points (reported as not approved) are now covered in the hosted run. Revocation, recovery, wallet rejection, wrong network, unavailable prover and insufficient rewards are still not run in a browser.
+
+Still open: a recorded session with the Lace extension itself. The E2E wallet speaks the same connector API but is not Lace.
 
 ## Original result (2026-09-19)
 
