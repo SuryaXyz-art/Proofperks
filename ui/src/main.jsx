@@ -365,14 +365,14 @@ function App() {
         <div className="card-heading"><div><p className="eyebrow">PRIVATE ELIGIBILITY</p><h2>Claim your reward</h2></div><span className="privacy-badge">Local only</span></div>
         <p className="hint">Import the credential you received from the issuer. ProofPerks reads the latest public commitment tree immediately before proving; your secret, anchor, and raw points stay in this tab.</p>
         <div className="form-row">
-          <label>Recovery anchor <span>private witness</span><input type="password" value={contributorCredential.anchor} onChange={(event) => setContributorCredential({ ...contributorCredential, anchor: event.target.value })} placeholder="32-byte credential anchor" /></label>
-          <label>Contributor secret <span>private witness</span><input type="password" value={contributorCredential.secret} onChange={(event) => setContributorCredential({ ...contributorCredential, secret: event.target.value })} placeholder="32-byte credential secret" /></label>
+          <label>Recovery anchor <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={contributorCredential.anchor} onChange={(event) => setContributorCredential({ ...contributorCredential, anchor: event.target.value })} placeholder="32-byte credential anchor" /></label>
+          <label>Contributor secret <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={contributorCredential.secret} onChange={(event) => setContributorCredential({ ...contributorCredential, secret: event.target.value })} placeholder="32-byte credential secret" /></label>
           <label>Approved points <span>private witness</span><input type="number" min="0" value={contributorCredential.points} onChange={(event) => setContributorCredential({ ...contributorCredential, points: event.target.value })} /></label>
         </div>
         <div className="recipient-confirm"><strong>Recipient</strong><span>{wallet ? shortAddress(wallet.address) : 'Connect wallet to choose a recipient'}</span><label><input type="checkbox" checked={recipientConfirmed} onChange={(event) => setRecipientConfirmed(event.target.checked)} disabled={!wallet} /> I confirm this connected wallet receives the fixed reward.</label></div>
         <div className="button-row"><button className="secondary" onClick={handleCheckCredential} disabled={busy || !wallet}>Check eligibility</button><button className="primary" onClick={handleClaim} disabled={busy || !wallet || !recipientConfirmed || contributorStatus?.claimed}>Claim</button><button className="secondary" onClick={handleCollectReward} disabled={busy || !wallet || !contributorStatus?.pendingPayout}>Collect Reward</button></div>
         <div className="stage-line" role="status"><strong>Stage:</strong> {claimStage} <span>{contributorStatus?.paid ? 'Reward paid' : contributorStatus?.pendingPayout ? 'Payout pending collection' : ''}</span></div>
-        <div className="backup-box"><strong>Encrypted credential backup</strong><span>Recovery requires this file, its password, the same deployment, and a connected wallet. ProofPerks cannot recover a lost secret.</span><div className="form-row"><input type="password" value={backupPassword} onChange={(event) => setBackupPassword(event.target.value)} placeholder="Backup password (12+ characters)" /><button className="secondary" onClick={handleBackup} disabled={!contributorCredential.secret}>Download backup</button></div><div className="form-row"><input type="password" value={importPassword} onChange={(event) => setImportPassword(event.target.value)} placeholder="Backup password" /><input type="file" accept="application/json" onChange={handleImport} /></div></div>
+        <div className="backup-box"><strong>Encrypted credential backup</strong><span>Recovery requires this file, its password, the same deployment, and a connected wallet. ProofPerks cannot recover a lost secret.</span><div className="form-row"><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={backupPassword} onChange={(event) => setBackupPassword(event.target.value)} placeholder="Backup password (12+ characters)" /><button className="secondary" onClick={handleBackup} disabled={!contributorCredential.secret}>Download backup</button></div><div className="form-row"><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={importPassword} onChange={(event) => setImportPassword(event.target.value)} placeholder="Backup password" /><input type="file" accept="application/json" onChange={handleImport} /></div></div>
       </section>}
 
       <section className="workspace-grid">
@@ -383,8 +383,8 @@ function App() {
           </div>
           <p className="hint">Add a credential received off-chain. The secret and points stay in React memory until you approve or remove the item.</p>
           <form className="intake-form" onSubmit={handleAddPending}>
-            <label>Stable recovery anchor <span>private witness</span><input type="password" value={contributorAnchor} onChange={(event) => setContributorAnchor(event.target.value)} placeholder="Keep this anchor for future re-issue" /></label>
-            <label>Contributor secret <span>private witness</span><input type="password" value={contributorSecret} onChange={(event) => setContributorSecret(event.target.value)} placeholder="Never written to the ledger" /></label>
+            <label>Stable recovery anchor <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={contributorAnchor} onChange={(event) => setContributorAnchor(event.target.value)} placeholder="Keep this anchor for future re-issue" /></label>
+            <label>Contributor secret <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={contributorSecret} onChange={(event) => setContributorSecret(event.target.value)} placeholder="Never written to the ledger" /></label>
             <div className="form-row">
               <label>Approved points <span>private witness</span><input type="number" min="0" value={points} onChange={(event) => setPoints(event.target.value)} /></label>
               <button className="secondary" type="submit" disabled={busy}>Add to queue</button>
@@ -408,20 +408,20 @@ function App() {
           <div className="card-heading"><div><p className="eyebrow">CAMPAIGN CONFIG</p><h2>Organizer access</h2></div><span className="wallet-badge">{wallet ? 'Connected' : 'Offline'}</span></div>
           <label>Contract address<input value={contractAddress} onChange={(event) => setContractAddress(event.target.value)} placeholder="Preprod contract address" /></label>
           <label>Issuer public key<input value={issuerPublicKey} onChange={(event) => setIssuerPublicKey(event.target.value)} placeholder="Deployment issuer key" /></label>
-          <label>Issuer secret <span>private witness</span><input type="password" value={issuerSecret} onChange={(event) => setIssuerSecret(event.target.value)} placeholder="Used locally to authorize approval" /></label>
+          <label>Issuer secret <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={issuerSecret} onChange={(event) => setIssuerSecret(event.target.value)} placeholder="Used locally to authorize approval" /></label>
           <form className="revoke-box" onSubmit={handleRevoke}>
             <div><p className="eyebrow">SAFETY CONTROL</p><h3>Revoke a credential</h3></div>
             <p>Blocks future claims for this secret. A private-derived marker is published; existing claims are not undone.</p>
-            <label>Contributor secret <span>private witness</span><input type="password" value={revokeSecret} onChange={(event) => setRevokeSecret(event.target.value)} placeholder="Never written to the ledger" /></label>
+            <label>Contributor secret <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={revokeSecret} onChange={(event) => setRevokeSecret(event.target.value)} placeholder="Never written to the ledger" /></label>
             <button className="danger" type="submit" disabled={busy || !wallet}>Revoke future claims</button>
           </form>
           <form className="reissue-box" onSubmit={handleReissue}>
             <div><p className="eyebrow">RECOVERY PATH</p><h3>Re-issue a credential</h3></div>
             <p>Retires the old secret marker and issues a replacement under the same private recovery anchor. This issuer-mediated path keeps one claim across secret rotation.</p>
-            <label>Stable recovery anchor <span>private witness</span><input type="password" value={reissueAnchor} onChange={(event) => setReissueAnchor(event.target.value)} placeholder="Same anchor for old and new credential" /></label>
-            <label>Old contributor secret <span>private witness</span><input type="password" value={oldContributorSecret} onChange={(event) => setOldContributorSecret(event.target.value)} /></label>
+            <label>Stable recovery anchor <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={reissueAnchor} onChange={(event) => setReissueAnchor(event.target.value)} placeholder="Same anchor for old and new credential" /></label>
+            <label>Old contributor secret <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={oldContributorSecret} onChange={(event) => setOldContributorSecret(event.target.value)} /></label>
             <label>New points <span>private witness</span><input type="number" min="0" value={newPoints} onChange={(event) => setNewPoints(event.target.value)} /></label>
-            <label>New contributor secret <span>private witness</span><input type="password" value={newContributorSecret} onChange={(event) => setNewContributorSecret(event.target.value)} placeholder="Replacement secret" /></label>
+            <label>New contributor secret <span>private witness</span><input type="password" autoComplete="off" data-1p-ignore data-lpignore="true" value={newContributorSecret} onChange={(event) => setNewContributorSecret(event.target.value)} placeholder="Replacement secret" /></label>
             <button className="secondary" type="submit" disabled={busy || !wallet}>Re-issue credential</button>
           </form>
           <form className="fund-box" onSubmit={handleFund}>

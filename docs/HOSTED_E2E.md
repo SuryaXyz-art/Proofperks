@@ -1,8 +1,17 @@
 # Hosted E2E validation
 
-Date: 2026-09-19
+## Update — 2026-09-29
 
-## Result
+The blockers recorded below have been cleared, and the chain flow has been proven:
+
+- Confirmed Preprod deployment: [`deployments/preprod.json`](../deployments/preprod.json), contract `ad1bac915c3099af6dc015f67b30d9cbdf62e76c827fd95dddc68aa8d63547d5`.
+- Headless approve → ZK claim → payout executed twice on Preprod: [`evidence/preprod-smoke-2026-09-29.json`](./evidence/preprod-smoke-2026-09-29.json).
+- Vercel Production: [proofperks.vercel.app](https://proofperks.vercel.app). The remote `build:vercel` hash-checked all 28 circuit artifacts against the deployment record.
+- Headless Chrome load of the production page, with no wallet connected, rendered live public state that matches the chain: 4 approved commitments, 2 claims, 98,000 remaining budget, 1,000 reward per claim. No console errors. The `.env.preprod` path returns 404, so local secrets were not uploaded.
+
+Still open: the wallet-driven browser session (Lace connect, approve, claim, collect) and the failure-state matrix below have not been run in a browser. The same circuits have run live only from the headless CLI.
+
+## Original result (2026-09-19)
 
 Hosted E2E validation was not completed. There is no actual Vercel Preview deployment, no confirmed Preprod deployment manifest, and no configured dedicated organizer/contributor account pair in this workspace. No website URL, approval receipt, claim receipt, payout receipt, recipient, or reward transfer is claimed.
 

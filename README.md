@@ -478,7 +478,7 @@ Use these labels as evidence status rather than treating repository presence as 
 - [x] VERIFIED — This README exists and records blocked/pending claims honestly
 - [ ] PENDING — Pitch deck
 - [ ] PENDING — Demo video
-- [ ] PENDING — Wave progress description
+- [x] VERIFIED — Wave progress description ([docs/wave-progress.md](./docs/wave-progress.md))
 - [ ] PENDING — `midnightntwrk` repository topic/label
 - [x] VERIFIED — Apache-2.0 license applied to the checked-in Midnight code
 - [x] VERIFIED — Public website URL ([proofperks.vercel.app](https://proofperks.vercel.app)) and confirmed Preprod deployment evidence ([`deployments/preprod.json`](./deployments/preprod.json), [smoke evidence](./docs/evidence/preprod-smoke-2026-09-29.json))
