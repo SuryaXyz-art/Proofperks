@@ -12,7 +12,7 @@ import type { UnboundTransaction, WalletProvider, MidnightProviders } from '@mid
 import { ledger, CompiledProofPerksContract, bytes32FromHex, deriveIssuerPublicKey, proofPerksPrivateStateKey, uint64, uint128 } from '../../contract/dist/index.js';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { PREPROD_CONFIG, requirePreprodEnv } from './preprod-config.ts';
-import { assertProofServer, deploymentPath, loadManifest, managedPath, privateStateRoot, startWallet, withTimeout, waitFor } from './preprod-runtime.ts';
+import { assertProofServer, deploymentPath, loadManifest, managedPath, privateStateRoot, startWallet, withTimeout, waitFor, readLedger } from './preprod-runtime.ts';
 
 setNetworkId(PREPROD_CONFIG.networkId);
 
@@ -67,8 +67,9 @@ try {
   const deployed = await withTimeout(deployContract(providers, { compiledContract: CompiledProofPerksContract, privateStateId: `${proofPerksPrivateStateKey}:organizer:${runtime.walletAddress}`, initialPrivateState, args: [campaignId, threshold, true, issuerPublicKey, rewardBudget, credentialNetworkId, credentialDeploymentId] }), 10 * 60_000, 'contract deployment');
   const address = deployed.deployTxData.public.contractAddress;
   const txHash = deployed.deployTxData.public.txHash;
+  console.error(`Deployment transaction confirmed: address ${address}, transaction ${txHash}`);
   const publicState = await waitFor(() => getPublicStates(providers.publicDataProvider, address), (value) => Boolean(value?.contractState), 120_000, 'deployment confirmation');
-  const publicLedger = ledger(publicState.contractState as any);
+  const publicLedger = readLedger(publicState.contractState as any);
   await mkdir(new URL('../../deployments/', import.meta.url), { recursive: true });
   const bundlePath = path.join(path.dirname(deploymentPath), 'preprod-circuit-bundle');
   for (const artifact of manifest.artifacts) {
@@ -77,6 +78,7 @@ try {
     await mkdir(path.dirname(destination), { recursive: true });
     await copyFile(source, destination);
   }
+  await copyFile(path.join(managedPath, 'manifest.json'), path.join(bundlePath, 'manifest.json'));
   await writeFile(deploymentPath, JSON.stringify({ address, transactionId: txHash, network: PREPROD_CONFIG.networkId, sourceDigest: manifest.source.sha256, toolchain: manifest.toolchain, circuits: manifest.circuits, artifacts: manifest.artifacts, circuitBundle: path.relative(path.dirname(deploymentPath), bundlePath), credentialScope: { networkId: Buffer.from(credentialNetworkId).toString('hex'), deploymentId: Buffer.from(credentialDeploymentId).toString('hex') }, campaign: { id: campaignId.toString(), thresholdPoints: threshold.toString(), active: true, issuerPublicKey: Buffer.from(issuerPublicKey).toString('hex'), rewardAmount: publicLedger.rewardAmount.toString(), rewardBudget: publicLedger.rewardBudget.toString() }, walletAddress: runtime.walletAddress, recordedAt: new Date().toISOString() }, null, 2));
   console.log(JSON.stringify({ status: 'confirmed', address, transactionId: txHash, network: PREPROD_CONFIG.networkId, walletAddress: runtime.walletAddress, nativeBalance: runtime.nativeBalance.toString(), dustBalance: runtime.dustBalance.toString(), campaign: { id: publicLedger.campaign.id.toString(), thresholdPoints: publicLedger.campaign.thresholdPoints.toString(), active: publicLedger.campaign.active, issuerPublicKey: Buffer.from(publicLedger.issuer).toString('hex'), rewardAmount: publicLedger.rewardAmount.toString(), rewardBudget: publicLedger.rewardBudget.toString() }, deploymentRecord: deploymentPath }, null, 2));
 } finally {

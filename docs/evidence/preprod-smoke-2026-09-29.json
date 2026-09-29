@@ -1,0 +1,18 @@
+{
+  "status": "confirmed",
+  "network": "preprod",
+  "address": "ad1bac915c3099af6dc015f67b30d9cbdf62e76c827fd95dddc68aa8d63547d5",
+  "deploymentTransactionId": "31998e1f0a7bda5b731294a2f21487683f1afede02f55c97d7a418e10077357c",
+  "approvalTransactionId": "149f13ad3aab1fc39328ebc9bccfa90f5296f79944a38ea05ae0a5c17b884e26",
+  "claimTransactionId": "3df720de3131b1cfa4201af532c0cd064f23481797d8d2254e38e46016211a5e",
+  "payoutTransactionId": "b626e75d9ef8d4a5b0714c33294904f5ccddaa5017bd68350cab57c12dbeba22",
+  "beforeApprovedCommitments": 3,
+  "afterApprovedCommitments": 4,
+  "nullifierRecorded": true,
+  "payoutRecorded": true,
+  "actualNativeTokenBalanceAfterPayout": "8000",
+  "rewardAmount": "1000",
+  "recordedAt": "2026-09-29",
+  "command": "npm run smoke:preprod",
+  "note": "Headless issuer wallet on Midnight Preprod; approve -> ZK claim -> payout. Contract funded with 10000 base units; two smoke claims paid (10000 -> 9000 -> 8000)."
+}

@@ -7,7 +7,7 @@ import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-p
 import { setNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { fromHex, toHex } from '@midnight-ntwrk/midnight-js-protocol/compact-runtime';
 import { Transaction } from '@midnight-ntwrk/midnight-js-protocol/ledger';
-import { encodeUserAddress } from '@midnight-ntwrk/compact-runtime';
+import { ContractState as RuntimeContractState, encodeUserAddress } from '@midnight-ntwrk/compact-runtime';
 import { MidnightBech32m, UnshieldedAddress } from '@midnight-ntwrk/wallet-sdk-address-format';
 import { findDeployedContract, getPublicStates } from '@midnight-ntwrk/midnight-js-contracts';
 import { CompiledProofPerksContract, ledger, proofPerksPrivateStateKey } from '@proofperks/contract';
@@ -30,6 +30,10 @@ import {
   validateDeploymentAddress,
   validateWalletConfiguration,
 } from '../../src/proofperks-client.ts';
+
+// Indexer reads return a ledger-v8 ContractState, while the generated ledger() expects the
+// compact-runtime WASM classes. Round-trip through bytes so the instanceof checks line up.
+const readLedger = (contractState) => ledger(RuntimeContractState.deserialize(contractState.serialize()).data);
 
 export const PREPROD = {
   networkId: 'preprod',
@@ -139,7 +143,7 @@ async function createProviders(wallet, privateState, { readOnly = false } = {}) 
     proverServerUri: config.proverServerUri ?? config.proofServer,
   });
   if (readOnly) {
-    return { publicDataProvider: indexerPublicDataProvider(config.indexerUri ?? PREPROD.indexer, config.indexerWsUri ?? PREPROD.indexerWs) };
+    return { publicDataProvider: indexerPublicDataProvider(config.indexerUri ?? PREPROD.indexer, config.indexerWsUri ?? PREPROD.indexerWs, globalThis.WebSocket) };
   }
   const addresses = await wallet.api.getShieldedAddresses();
   if (!config.proverServerUri && !wallet.api.getProvingProvider) throw new Error('No prover is configured. Connect a wallet with proving support or configure a proof server.');
@@ -149,7 +153,7 @@ async function createProviders(wallet, privateState, { readOnly = false } = {}) 
   );
   return {
     privateStateProvider: privateState,
-    publicDataProvider: indexerPublicDataProvider(config.indexerUri ?? PREPROD.indexer, config.indexerWsUri ?? PREPROD.indexerWs),
+    publicDataProvider: indexerPublicDataProvider(config.indexerUri ?? PREPROD.indexer, config.indexerWsUri ?? PREPROD.indexerWs, globalThis.WebSocket),
     zkConfigProvider,
     proofProvider: httpClientProofProvider(config.proverServerUri ?? PREPROD.proofServer, zkConfigProvider),
     walletProvider: {
@@ -340,7 +344,7 @@ export async function createContributorClient({ wallet, contractAddress, contrib
   await privateState.set(stateKey, initialState);
   const commitment = deriveCredentialCommitmentFromHex({ networkId, deploymentId, campaignId, anchor: contributorAnchor || contributorSecret, secret: contributorSecret, points: pointsValue });
   const publicStates = await getPublicStates(providers.publicDataProvider, contractAddress);
-  const publicLedger = ledger(publicStates.contractState);
+  const publicLedger = readLedger(publicStates.contractState);
   const path = publicLedger.approvedCommitments.findPathForLeaf(commitment);
   if (!path) throw new Error('This credential is not approved in the latest commitments tree.');
   await privateState.set(stateKey, { ...initialState, commitmentPaths: new Map([[toHex(commitment), path]]) });
@@ -375,7 +379,7 @@ export async function readCampaignDashboard({ wallet = null, contractAddress }) 
   privateState.setContractAddress(contractAddress);
   const providers = await createProviders(wallet, privateState, { readOnly: true });
   const publicStates = await getPublicStates(providers.publicDataProvider, contractAddress);
-  const publicLedger = ledger(publicStates.contractState);
+  const publicLedger = readLedger(publicStates.contractState);
   const root = publicLedger.approvedCommitments.root();
 
   return {

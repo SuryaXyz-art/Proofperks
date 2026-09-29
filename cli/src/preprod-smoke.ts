@@ -3,7 +3,7 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { encodeUserAddress } from '@midnight-ntwrk/compact-runtime';
-import { findDeployedContract, getPublicStates, getUnshieldedBalances } from '@midnight-ntwrk/midnight-js-contracts';
+import { findDeployedContract, getPublicStates } from '@midnight-ntwrk/midnight-js-contracts';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
@@ -13,7 +13,7 @@ import type { UnboundTransaction, WalletProvider, MidnightProviders } from '@mid
 import { ledger, CompiledProofPerksContract, bytes32FromHex, deriveContributionCommitment, deriveClaimNullifier, deriveIssuerPublicKey, proofPerksPrivateStateKey, uint64 } from '../../contract/dist/index.js';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { PREPROD_CONFIG, requirePreprodEnv } from './preprod-config.ts';
-import { assertProofServer, deploymentPath, loadManifest, managedPath, privateStateRoot, startWallet, withTimeout, waitFor } from './preprod-runtime.ts';
+import { assertProofServer, deploymentPath, loadManifest, managedPath, privateStateRoot, startWallet, withTimeout, waitFor, readLedger, readContractNativeBalance } from './preprod-runtime.ts';
 
 setNetworkId(PREPROD_CONFIG.networkId);
 const deployment = JSON.parse(await readFile(deploymentPath, 'utf8'));
@@ -42,21 +42,21 @@ try {
   const stateKey = `${proofPerksPrivateStateKey}:smoke:${runtime.walletAddress}`;
   const privateState = { issuerSecret, approvedContributorSecret: contributorSecret, approvedContributorAnchor: contributorAnchor, approvedPoints: points, contributorAnchor, contributorSecret, contributorPoints: points, revocationTargetSecret: contributorSecret, oldContributorAnchor: contributorAnchor, oldContributorSecret: contributorSecret, commitmentPaths: new Map() };
   const deployed = await findDeployedContract(providers, { contractAddress: deployment.address, compiledContract: CompiledProofPerksContract, privateStateId: stateKey, initialPrivateState: privateState });
-  const before = ledger((await getPublicStates(publicDataProvider, deployment.address)).contractState as any);
-  await withTimeout(deployed.callTx.approve_contribution(), 10 * 60_000, 'approval transaction');
+  const before = readLedger((await getPublicStates(publicDataProvider, deployment.address)).contractState as any);
+  const approval = await withTimeout(deployed.callTx.approve_contribution(), 10 * 60_000, 'approval transaction');
   const commitment = deriveContributionCommitment({ credentialVersion: 1n, networkId: credentialNetworkId, deploymentId: credentialDeploymentId, campaignId: BigInt(deployment.campaign.id), anchor: contributorAnchor, secret: contributorSecret, points });
   const approved = await waitFor(() => getPublicStates(publicDataProvider, deployment.address), (value) => Boolean(value.contractState), 120_000, 'approval confirmation');
-  const approvedLedger = ledger(approved.contractState as any);
+  const approvedLedger = readLedger(approved.contractState as any);
   const commitmentPath = approvedLedger.approvedCommitments.findPathForLeaf(commitment);
   if (!commitmentPath) throw new Error('Smoke credential commitment was not found in the confirmed tree.');
   await privateStateProvider.set(stateKey, { ...privateState, commitmentPaths: new Map([[Buffer.from(commitment).toString('hex'), commitmentPath]]) });
-  const recipientAddress = (await runtime.wallet.unshielded.getAddress()).toString();
+  const recipientAddress = runtime.keystore.getAddress();
   const recipient = { bytes: encodeUserAddress(recipientAddress) };
-  await withTimeout(deployed.callTx.claim_reward(recipient), 10 * 60_000, 'claim transaction');
+  const claim = await withTimeout(deployed.callTx.claim_reward(recipient), 10 * 60_000, 'claim transaction');
   const nullifier = deriveClaimNullifier({ credentialVersion: 1n, networkId: credentialNetworkId, deploymentId: credentialDeploymentId, campaignId: BigInt(deployment.campaign.id), secret: contributorSecret });
-  const claimed = await waitFor(() => getPublicStates(publicDataProvider, deployment.address), (value) => ledger(value.contractState as any).usedNullifiers.member(nullifier), 120_000, 'claim confirmation');
-  await withTimeout(deployed.callTx.payout_reward(nullifier), 10 * 60_000, 'payout transaction');
-  const finalState = await waitFor(() => getPublicStates(publicDataProvider, deployment.address), (value) => ledger(value.contractState as any).paidRewardNullifiers.member(nullifier), 120_000, 'payout confirmation');
-  const actualBalance = (await getUnshieldedBalances(publicDataProvider, deployment.address)).find((entry) => entry.tokenType === nativeToken().raw)?.balance ?? 0n;
-  console.log(JSON.stringify({ status: 'confirmed', network: PREPROD_CONFIG.networkId, address: deployment.address, deploymentTransactionId: deployment.transactionId, beforeApprovedCommitments: Number(before.approvedCommitments.firstFree()), afterApprovedCommitments: Number(ledger(approved.contractState as any).approvedCommitments.firstFree()), nullifierRecorded: ledger(claimed.contractState as any).usedNullifiers.member(nullifier), payoutRecorded: ledger(finalState.contractState as any).paidRewardNullifiers.member(nullifier), actualNativeTokenBalanceAfterPayout: actualBalance.toString(), rewardAmount: ledger(finalState.contractState as any).rewardAmount.toString() }, null, 2));
+  const claimed = await waitFor(() => getPublicStates(publicDataProvider, deployment.address), (value) => readLedger(value.contractState as any).usedNullifiers.member(nullifier), 120_000, 'claim confirmation');
+  const payout = await withTimeout(deployed.callTx.payout_reward(nullifier), 10 * 60_000, 'payout transaction');
+  const finalState = await waitFor(() => getPublicStates(publicDataProvider, deployment.address), (value) => readLedger(value.contractState as any).paidRewardNullifiers.member(nullifier), 120_000, 'payout confirmation');
+  const actualBalance = await readContractNativeBalance(publicDataProvider, deployment.address);
+  console.log(JSON.stringify({ status: 'confirmed', network: PREPROD_CONFIG.networkId, address: deployment.address, deploymentTransactionId: deployment.transactionId, approvalTransactionId: approval.public.txHash, claimTransactionId: claim.public.txHash, payoutTransactionId: payout.public.txHash, beforeApprovedCommitments: Number(before.approvedCommitments.firstFree()), afterApprovedCommitments: Number(readLedger(approved.contractState as any).approvedCommitments.firstFree()), nullifierRecorded: readLedger(claimed.contractState as any).usedNullifiers.member(nullifier), payoutRecorded: readLedger(finalState.contractState as any).paidRewardNullifiers.member(nullifier), actualNativeTokenBalanceAfterPayout: actualBalance.toString(), rewardAmount: readLedger(finalState.contractState as any).rewardAmount.toString() }, null, 2));
 } finally { await runtime.stop().catch(() => undefined); }

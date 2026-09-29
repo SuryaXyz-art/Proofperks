@@ -2,7 +2,7 @@
 
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getPublicStates, getUnshieldedBalances, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
+import { getPublicStates, findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
 import { httpClientProofProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { indexerPublicDataProvider } from '@midnight-ntwrk/midnight-js-indexer-public-data-provider';
@@ -12,7 +12,7 @@ import type { UnboundTransaction, WalletProvider, MidnightProviders } from '@mid
 import { ledger, CompiledProofPerksContract, bytes32FromHex, deriveIssuerPublicKey, proofPerksPrivateStateKey, uint128 } from '../../contract/dist/index.js';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
 import { PREPROD_CONFIG, requirePreprodEnv } from './preprod-config.ts';
-import { assertProofServer, deploymentPath, loadManifest, managedPath, privateStateRoot, startWallet, withTimeout, waitFor } from './preprod-runtime.ts';
+import { assertProofServer, deploymentPath, loadManifest, managedPath, privateStateRoot, startWallet, withTimeout, waitFor, readLedger, readContractNativeBalance } from './preprod-runtime.ts';
 
 setNetworkId(PREPROD_CONFIG.networkId);
 const command = process.argv[2];
@@ -25,12 +25,11 @@ if (deployment.network !== PREPROD_CONFIG.networkId) throw new Error('Deployment
 const publicDataProvider = indexerPublicDataProvider(PREPROD_CONFIG.indexer, PREPROD_CONFIG.indexerWS);
 if (command === 'verify') {
   await assertProofServer();
-  const [state, balances] = await Promise.all([
+  const [state, actualNativeBalance] = await Promise.all([
     withTimeout(getPublicStates(publicDataProvider, deployment.address), 30_000, 'contract state read'),
-    withTimeout(getUnshieldedBalances(publicDataProvider, deployment.address), 30_000, 'contract token balance read'),
+    withTimeout(readContractNativeBalance(publicDataProvider, deployment.address), 30_000, 'contract token balance read'),
   ]);
-  const publicLedger = ledger(state.contractState as any);
-  const actualNativeBalance = balances.find((entry) => entry.tokenType === nativeToken().raw)?.balance ?? 0n;
+  const publicLedger = readLedger(state.contractState as any);
   const result = { status: 'confirmed', address: deployment.address, transactionId: deployment.transactionId, network: deployment.network, sourceDigest: manifest.source.sha256, artifactCount: manifest.artifacts.length, campaign: { id: publicLedger.campaign.id.toString(), thresholdPoints: publicLedger.campaign.thresholdPoints.toString(), active: publicLedger.campaign.active, issuerPublicKey: Buffer.from(publicLedger.issuer).toString('hex'), rewardAmount: publicLedger.rewardAmount.toString(), rewardBudget: publicLedger.rewardBudget.toString() }, actualNativeTokenBalance: actualNativeBalance.toString(), budgetCap: publicLedger.rewardBudget.toString(), reservedRewardBudget: publicLedger.reservedRewardBudget.toString() };
   console.log(JSON.stringify(result, null, 2));
 } else {
@@ -53,12 +52,10 @@ if (command === 'verify') {
     const providers: MidnightProviders<any, any, any> = { privateStateProvider, publicDataProvider, zkConfigProvider, proofProvider: httpClientProofProvider(PREPROD_CONFIG.proofServer, zkConfigProvider), walletProvider, midnightProvider: { submitTx: (tx) => runtime.wallet.submitTransaction(tx) } };
     const initialPrivateState = { issuerSecret, approvedContributorSecret: new Uint8Array(32), approvedContributorAnchor: new Uint8Array(32), approvedPoints: 0n, contributorAnchor: new Uint8Array(32), contributorSecret: new Uint8Array(32), contributorPoints: 0n, revocationTargetSecret: new Uint8Array(32), oldContributorAnchor: new Uint8Array(32), oldContributorSecret: new Uint8Array(32), commitmentPaths: new Map() };
     const deployed = await findDeployedContract(providers, { contractAddress: deployment.address, compiledContract: CompiledProofPerksContract, privateStateId: `${proofPerksPrivateStateKey}:organizer:${runtime.walletAddress}`, initialPrivateState });
-    const before = await getUnshieldedBalances(publicDataProvider, deployment.address);
-    const beforeBalance = before.find((entry) => entry.tokenType === nativeToken().raw)?.balance ?? 0n;
+    const beforeBalance = await readContractNativeBalance(publicDataProvider, deployment.address);
     const tx = await deployed.callTx.fund_reward_pool(amount);
     const txHash = tx.public.txHash;
-    const after = await waitFor(async () => getUnshieldedBalances(publicDataProvider, deployment.address), (balances) => (balances.find((entry) => entry.tokenType === nativeToken().raw)?.balance ?? 0n) >= beforeBalance + amount, 120_000, 'funding confirmation');
-    const afterBalance = after.find((entry) => entry.tokenType === nativeToken().raw)?.balance ?? 0n;
+    const afterBalance = await waitFor(() => readContractNativeBalance(publicDataProvider, deployment.address), (balance) => balance >= beforeBalance + amount, 120_000, 'funding confirmation');
     console.log(JSON.stringify({ status: 'confirmed', address: deployment.address, transactionId: txHash, network: PREPROD_CONFIG.networkId, actualNativeTokenBalanceBefore: beforeBalance.toString(), amountFunded: amount.toString(), actualNativeTokenBalanceAfter: afterBalance.toString(), budgetCapUnchanged: deployment.campaign.rewardBudget, note: 'Actual contract token balance is reported separately from the public campaign budget cap.' }, null, 2));
   } finally { await runtime.stop().catch(() => undefined); }
 }

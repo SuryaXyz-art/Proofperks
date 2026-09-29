@@ -16,3 +16,8 @@ pilot-load-events.jsonl
 pilot-load-metrics.json
 
 .vercel
+
+# Midnight level private-state provider default store
+midnight-level-db/
+# Regenerated from contract/managed by deploy:preprod; hash-pinned in deployments/preprod.json
+deployments/preprod-circuit-bundle/

@@ -35,6 +35,7 @@
     "demo": "npm run demo --workspace @proofperks/cli",
     "pilot:load": "node cli/load-test.mjs",
     "pilot:export": "node cli/export-pilot-metrics.mjs",
+    "wallet:preprod": "npm run wallet:preprod --workspace @proofperks/cli --",
     "deploy:preprod": "npm run compile && npm run deploy:preprod --workspace @proofperks/cli",
     "fund:preprod": "npm run fund:preprod --workspace @proofperks/cli",
     "verify:preprod": "npm run verify:preprod --workspace @proofperks/cli",

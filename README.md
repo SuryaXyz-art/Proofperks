@@ -10,9 +10,9 @@ Private eligibility checks for Web3 community rewards, built with Midnight Compa
 
 [![GitHub Repository](https://img.shields.io/badge/GitHub-SuryaXyz--art%2FProofperks-blue?logo=github)](https://github.com/SuryaXyz-art/Proofperks)
 
-[Repository](https://github.com/SuryaXyz-art/Proofperks) · [Walkthrough](./docs/walkthrough.md) · [Contract](./contract/src/proofperks.compact) · [Pilot runbook](./docs/pilot-runbook.md) · [License](./LICENSE)
+**Live app: [proofperks.vercel.app](https://proofperks.vercel.app)** · [Repository](https://github.com/SuryaXyz-art/Proofperks) · [Walkthrough](./docs/walkthrough.md) · [Contract](./contract/src/proofperks.compact) · [Pilot runbook](./docs/pilot-runbook.md) · [License](./LICENSE)
 
-**Current stage: development prototype.** The contract compiles and the repository includes an organizer dashboard, testkit integration tests, and a reference CLI demo. A completed live Preprod deployment, successful end-to-end testkit run, and real pilot results are not claimed.
+**Current stage: live on Midnight Preprod.** The contract is deployed and funded on Preprod, the full approve → private ZK claim → payout flow has been executed on-chain twice from the headless CLI, and the organizer console is hosted on Vercel against that deployment. A hosted browser-wallet (Lace) run and real pilot results are not yet claimed.
 
 ## Release and evidence status
 
@@ -20,14 +20,17 @@ Private eligibility checks for Web3 community rewards, built with Midnight Compa
 | --- | --- | --- |
 | Source repository | VERIFIED | [github.com/SuryaXyz-art/Proofperks](https://github.com/SuryaXyz-art/Proofperks) |
 | Vercel project configuration | VERIFIED | Project `proofperks`, ID `prj_5kEUtT2RwN575ZNAfauby2HzI4o2`, Node 22.x, `ui/dist` output |
-| Confirmed Preprod deployment | BLOCKED | No `deployments/preprod.json` exists in this workspace |
-| Preprod contract address and transaction | BLOCKED | No confirmed deployment receipt is available |
-| Vercel Preview URL | PENDING | No Preview deployment exists |
-| Vercel Production URL | PENDING | No Production deployment exists |
+| Confirmed Preprod deployment | VERIFIED | [`deployments/preprod.json`](./deployments/preprod.json); campaign read back from chain (threshold 100, reward 1,000, budget 100,000) |
+| Preprod contract address and transaction | VERIFIED | Contract `ad1bac915c3099af6dc015f67b30d9cbdf62e76c827fd95dddc68aa8d63547d5`, deploy tx `31998e1f0a7bda5b731294a2f21487683f1afede02f55c97d7a418e10077357c` |
+| Reward pool funding | VERIFIED | 10,000 base units funded via `fund_reward_pool`; `npm run verify:preprod` reads the balance from contract state |
+| On-chain approve → claim → payout | VERIFIED | [`docs/evidence/preprod-smoke-2026-09-29.json`](./docs/evidence/preprod-smoke-2026-09-29.json): approval `149f13ad…884e26`, ZK claim `3df720de…211a5e`, payout `b626e75d…beba22`; pool 10,000 → 8,000 after two paid claims |
+| Vercel Preview URL | VERIFIED | Remote `build:vercel` hash-checked all 28 circuit artifacts against the deployment record |
+| Vercel Production URL | VERIFIED | [proofperks.vercel.app](https://proofperks.vercel.app) |
+| Hosted browser-wallet (Lace) E2E | PENDING | See [docs/HOSTED_E2E.md](./docs/HOSTED_E2E.md); the chain flow is proven headlessly, the browser session is not yet recorded |
 | Real Compact/testkit proving timings | BLOCKED | Required testkit services are unavailable; integration tests remain skipped |
 | 3–5-person pilot outcomes | PENDING | Runbook and survey exist; no pilot has been executed |
 
-No deployment identifier, website URL, transaction receipt, payout, pilot participation, feedback, timing, or security-review result is inferred from a local build or simulation.
+Every VERIFIED row above comes from a confirmed Preprod transaction or a live URL. No pilot participation, feedback, timing, or security-review result is inferred from a local build or simulation.
 
 ## Contents
 
@@ -87,10 +90,9 @@ Implemented in this repository:
 
 Not implemented yet:
 
-- A completed live Preprod deployment from this workspace.
 - A captured real-testkit proving-time report from this workspace; the latest run was explicitly skipped because Docker/testkit infrastructure is unavailable here.
 - Custom reward-token minting or treasury management beyond the fixed native-token payout.
-- A live wallet/prover/chain validation from this workspace; browser flows are implemented but require the configured Preprod deployment and prover.
+- A recorded hosted browser-wallet (Lace) session; the same circuits have been executed live on Preprod from the headless CLI.
 
 The Compact source compiles with `compact compile`, including full ZK assets when run without `--skip-zk`. The integration tests exercise the generated artifact through Midnight testkit when its node, indexer, wallet, and proof-server infrastructure is available. The explicit `reference` mode remains the runnable Wave 1 CLI fallback; its timings are not Compact proving times.
 
@@ -284,9 +286,9 @@ npm run demo --workspace @proofperks/cli
 
 This path simulates the three scenarios locally. It does not submit blockchain transactions, require a deployed contract, or provide ZK proving-time measurements. The root `npm run demo` script delegates to the same CLI workspace.
 
-### 5. Prepare a Preprod deployment — not yet executed here
+### 5. Deploy to Preprod
 
-These commands document the implemented deployment path, not a completed deployment. Keep wallet seeds and private-state passwords out of commits, recordings, and shared terminal logs.
+This is the path used for the live deployment recorded in `deployments/preprod.json`. Keep wallet seeds and private-state passwords out of commits, recordings, and shared terminal logs.
 
 The Preprod deployment requires a funded headless issuer wallet and local proof server. Start the proof server in one terminal:
 
@@ -306,7 +308,17 @@ $env:PROOFPERKS_PRIVATE_STATE_PASSWORD="<strong-local-password>"
 npm run deploy:preprod
 ```
 
-The wallet must have Preprod tNIGHT and DUST available. The command prints the deployed contract address; keep it for the UI configuration.
+The wallet must have Preprod tNIGHT and DUST available. Use the wallet helper to fund and prepare a fresh headless wallet:
+
+```powershell
+npm run wallet:preprod -- address        # print the mn_addr_preprod… address for the faucet
+npm run wallet:preprod -- status         # NIGHT balance, DUST registration and DUST balance
+npm run wallet:preprod -- register-dust  # register NIGHT UTXOs for DUST fee generation
+```
+
+A fresh wallet's first sync replays the full Preprod DUST history and can take a couple of hours. Progress is checkpointed to `.private-state/wallet-cache.json` (gitignored) every minute, so later commands resume in seconds. `PROOFPERKS_WALLET_SYNC_TIMEOUT_MS` raises the sync timeout (default 10 minutes) and `PROOFPERKS_DUST_FEE_OVERHEAD` sets the DUST fee overhead that keeps contract calls from being rejected as `NotNormalized` (error 117).
+
+The deploy command prints the deployed contract address; keep it for the UI configuration.
 
 The deployment account or another treasury must fund the contract through the issuer-authenticated `fund_reward_pool` circuit. After deployment, run `PROOFPERKS_FUND_REWARD_POOL=1000 npm run fund:preprod`, then `npm run verify:preprod`. Verification reports actual contract native-token balance separately from `PROOFPERKS_REWARD_BUDGET`, the public campaign cap. The configured smoke runner is `npm run smoke:preprod`; it performs approval, claim, and payout only after a confirmed deployment record exists. A successful claim reserves one fixed 1,000-base-unit reward; `payout_reward` sends it to the recipient bound during `claim_reward`, then discharges the reservation and cap. If payout fails, the reservation remains retryable without claiming again.
 
@@ -409,7 +421,7 @@ The roadmap below separates work that is already scaffolded from work that still
 
 ### Wave 2 — run and complete the pilotable flow
 
-- Execute the existing Preprod deployment script with a funded wallet, DUST, proof server, and reward pool; no live deployment has been completed from this workspace.
+- ~~Execute the Preprod deployment with a funded wallet, DUST, proof server, and reward pool.~~ Done: contract deployed, funded, and approve → claim → payout executed on-chain; console hosted at [proofperks.vercel.app](https://proofperks.vercel.app).
 - Run the supervised 3–5 contributor pilot described in [docs/pilot-runbook.md](./docs/pilot-runbook.md) and collect feedback using [docs/pilot-survey.md](./docs/pilot-survey.md); the materials exist, but the pilot has not been run.
 - Validate the contributor claim controls and claim-path/indexer/private-state flow in a live hosted wallet session; implementation exists, but live acceptance is not verified.
 - Use the existing anonymized exporter and reference load runner to produce reportable aggregate metrics, then replace reference timings with live testkit measurements when test infrastructure is available.
@@ -469,5 +481,5 @@ Use these labels as evidence status rather than treating repository presence as 
 - [ ] PENDING — Wave progress description
 - [ ] PENDING — `midnightntwrk` repository topic/label
 - [x] VERIFIED — Apache-2.0 license applied to the checked-in Midnight code
-- [ ] BLOCKED — Public website URL and confirmed Preprod deployment evidence
+- [x] VERIFIED — Public website URL ([proofperks.vercel.app](https://proofperks.vercel.app)) and confirmed Preprod deployment evidence ([`deployments/preprod.json`](./deployments/preprod.json), [smoke evidence](./docs/evidence/preprod-smoke-2026-09-29.json))
 - [ ] BLOCKED — Real 3–5-person pilot aggregate outcomes

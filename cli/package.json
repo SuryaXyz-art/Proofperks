@@ -17,6 +17,7 @@
   "scripts": {
     "compile": "node src/compile.mjs",
     "deploy": "node src/deploy.mjs",
+    "wallet:preprod": "node --experimental-strip-types src/preprod-wallet.ts",
     "deploy:preprod": "node --experimental-strip-types src/preprod-deploy.ts",
     "fund:preprod": "node --experimental-strip-types src/preprod-ops.ts fund",
     "verify:preprod": "node --experimental-strip-types src/preprod-ops.ts verify",

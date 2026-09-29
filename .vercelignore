@@ -1,0 +1,16 @@
+# Never upload local secrets or private state to Vercel.
+.env
+.env.*
+.private-state/
+midnight-level-db/
+logs/
+*.log
+pilot-events.jsonl
+pilot-metrics.json
+pilot-load-events.jsonl
+pilot-load-metrics.json
+
+# Rebuilt remotely.
+node_modules/
+ui/dist/
+ui/public/zkconfig/
