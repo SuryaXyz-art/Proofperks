@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "source": {
+    "path": "src/proofperks.compact",
+    "sha256": "9bfe8533253b27116032117a016cc320bcb788b82795e0a6843efca8b53595c1"
+  },
+  "toolchain": {
+    "compactDevtools": "compact 0.5.2",
+    "compactCompiler": "0.31.1",
+    "languagePragma": "0.23",
+    "node": "v22.23.2"
+  },
+  "circuits": [
+    "approve_contribution",
+    "claim_reward",
+    "fund_reward_pool",
+    "payout_reward",
+    "reissue_contribution",
+    "revoke_contribution"
+  ],
+  "artifacts": [
+    {
+      "path": "compiler/contract-info.json",
+      "sha256": "4989627e765201f6812c08485a09c8064af427b75965fcb371a5d55e44f17219",
+      "bytes": 13085
+    },
+    {
+      "path": "contract/index.d.ts",
+      "sha256": "c37a78fe9011c5972b28922f91e200fe1674dc871acb0bff9678e4f4b33f7192",
+      "bytes": 9141
+    },
+    {
+      "path": "contract/index.js",
+      "sha256": "343bd8637a56ea2fbe42f88d43a05e485345bdff91c9838d9586e7c685df7ce0",
+      "bytes": 392595
+    },
+    {
+      "path": "contract/index.js.map",
+      "sha256": "09b31c58cf0f0dce4c3f76ee2d49c341ccbc9b13cba66fd51c1ec1edfee87f42",
+      "bytes": 10199
+    },
+    {
+      "path": "keys/approve_contribution.prover",
+      "sha256": "47954fb7dc6abec73f0846850aade72c1662d34eafceb7991661b4f996e06591",
+      "bytes": 5219533
+    },
+    {
+      "path": "keys/approve_contribution.verifier",
+      "sha256": "5817a631a04b1ba899406f566d992e1477ac8ec98abd4ac723eb8d99b448f17e",
+      "bytes": 2119
+    },
+    {
+      "path": "keys/claim_reward.prover",
+      "sha256": "220fb4f259c0f1977ca4bbd9422314ce00fb76a471ac250e5b10a7f1c1a013f6",
+      "bytes": 10011166
+    },
+    {
+      "path": "keys/claim_reward.verifier",
+      "sha256": "49643eff82aba1df4e0f2348a6fe724167f075001deacca65d231c07395e0bdc",
+      "bytes": 2119
+    },
+    {
+      "path": "keys/fund_reward_pool.prover",
+      "sha256": "4b3564a53f799e19eee5d1f307c8b94b4cfa93e21a8c522bb70bbed7b8a86115",
+      "bytes": 2820587
+    },
+    {
+      "path": "keys/fund_reward_pool.verifier",
+      "sha256": "9cfbdc627a8c663eece4b98d857fcc311e93afee5bcc9d623e46fbeb7b0b02ad",
+      "bytes": 2119
+    },
+    {
+      "path": "keys/payout_reward.prover",
+      "sha256": "d962cf5fdcfa2519e5ef28d35c5e8756657849fd055c5ba552b823b843ff7c83",
+      "bytes": 155774
+    },
+    {
+      "path": "keys/payout_reward.verifier",
+      "sha256": "e003538638f0fca24ffef6a569018eaad4c2f2d9b4d2b975095c26c544a92438",
+      "bytes": 1351
+    },
+    {
+      "path": "keys/reissue_contribution.prover",
+      "sha256": "699b6a2dceebf05ba025a934bbf83d0db9d937af1311dc5c5c1df5340ae0428e",
+      "bytes": 19510827
+    },
+    {
+      "path": "keys/reissue_contribution.verifier",
+      "sha256": "40af33da79e31d1229c7ac0a6410263e232c66ebec97de45695b3945f00db002",
+      "bytes": 2119
+    },
+    {
+      "path": "keys/revoke_contribution.prover",
+      "sha256": "6c06d4b2d1586c45d47b37435cb99a85e823ade3ae12deaf22c28840d474a6cc",
+      "bytes": 5211637
+    },
+    {
+      "path": "keys/revoke_contribution.verifier",
+      "sha256": "4426a585bac640f29e3f9fabf75d8701f1ee1c3bc3186923a01eb87ba02339e7",
+      "bytes": 2119
+    },
+    {
+      "path": "zkir/approve_contribution.bzkir",
+      "sha256": "0694006fbd459ab0aeecd71a1194ce91c68c13706d88e0531b3ea8877cfe42e1",
+      "bytes": 843
+    },
+    {
+      "path": "zkir/approve_contribution.zkir",
+      "sha256": "cc9eb503479c4fcd5b8bf96933fb2d3c51b447421e5fba9e7ac1f77bde5a90df",
+      "bytes": 14128
+    },
+    {
+      "path": "zkir/claim_reward.bzkir",
+      "sha256": "3c35a21d910bb83026fe2720a6c8b29cfc4244720d448cd1bc3f9c8abe4f5e5e",
+      "bytes": 2376
+    },
+    {
+      "path": "zkir/claim_reward.zkir",
+      "sha256": "1f13a5aca6b49b3a725c99c4fbbbaf5458878c6b73434e83fc6c9da4440f2db6",
+      "bytes": 39530
+    },
+    {
+      "path": "zkir/fund_reward_pool.bzkir",
+      "sha256": "a434a2a815445003b86dfee312feb4dc3edaf515a018bab251abe36928430948",
+      "bytes": 350
+    },
+    {
+      "path": "zkir/fund_reward_pool.zkir",
+      "sha256": "7e48271342ecd143b5fd6607c11b14dc320fbbf39d06f9a97ac3e90313264878",
+      "bytes": 4958
+    },
+    {
+      "path": "zkir/payout_reward.bzkir",
+      "sha256": "f4ce3d1581f24a8d1b702915d180ea829cba697bcdfb9d182c69cbbb40859188",
+      "bytes": 1144
+    },
+    {
+      "path": "zkir/payout_reward.zkir",
+      "sha256": "0ced942ed1e5e959b863b9888eb2d1b9ad9a75de08d0415c081afeece3638652",
+      "bytes": 20170
+    },
+    {
+      "path": "zkir/reissue_contribution.bzkir",
+      "sha256": "d664d02bb9b1e9c8f2e8971e41893b397ec737b1af009ea589e9353d0b54123d",
+      "bytes": 1962
+    },
+    {
+      "path": "zkir/reissue_contribution.zkir",
+      "sha256": "45249cdb6b53c1d5a6233d9b528a7813af1f4fa340362bc1d639295e24dc60b3",
+      "bytes": 32986
+    },
+    {
+      "path": "zkir/revoke_contribution.bzkir",
+      "sha256": "ce62da0366a6d6980ad2bda69d10b6ebae9e10503d8490e580a5b574ea92672e",
+      "bytes": 475
+    },
+    {
+      "path": "zkir/revoke_contribution.zkir",
+      "sha256": "960fcff868ce8ce6395a6299e35579e3424d28ecad22bde745ea285f0cdd0e55",
+      "bytes": 7340
+    }
+  ]
+}

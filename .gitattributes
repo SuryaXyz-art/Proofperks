@@ -1,0 +1,3 @@
+# Hash-pinned circuit artifacts: never convert line endings (build-vercel.mjs checks SHA-256).
+deployments/preprod-circuit-bundle/** -text
+deployments/preprod.json -text

@@ -73,10 +73,29 @@ async function run(command, args, env) {
   });
 }
 
+const exists = (filePath) => access(filePath).then(() => true, () => false);
+
+// Git-triggered Vercel builds start from a clean checkout: contract/managed and contract/dist are
+// gitignored and the Compact compiler is unavailable there. The committed circuit bundle is the
+// exact managed output of the confirmed deployment, so restore it only after every artifact hash
+// matches deployments/preprod.json, then build the TypeScript wrapper from committed sources.
+async function restoreCleanCheckout(deployment) {
+  if (!(await exists(path.join(managedPath, 'manifest.json')))) {
+    const bundleManifest = await readJson(path.join(bundlePath, 'manifest.json'), 'deployments/preprod-circuit-bundle/manifest.json');
+    await validateDeploymentBundle({ deployment, managed: bundleManifest, bundle: bundlePath });
+    await cp(bundlePath, managedPath, { recursive: true });
+    console.log(`Restored contract/managed from the hash-verified Preprod circuit bundle (${bundleManifest.artifacts.length} artifacts).`);
+  }
+  if (!(await exists(path.join(root, 'contract', 'dist', 'index.js')))) {
+    await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build', '--workspace', '@proofperks/contract'], process.env);
+  }
+}
+
 export async function main() {
   const deployment = await readJson(deploymentPath, 'deployments/preprod.json');
-  const managed = await readJson(path.join(managedPath, 'manifest.json'), 'contract/managed/manifest.json');
   await access(bundlePath).catch(() => { throw new Error('deployments/preprod-circuit-bundle is missing; only a confirmed deployment may create it.'); });
+  await restoreCleanCheckout(deployment);
+  const managed = await readJson(path.join(managedPath, 'manifest.json'), 'contract/managed/manifest.json');
   await validateDeploymentBundle({ deployment, managed, bundle: bundlePath });
   const config = publicConfig();
   if (config.address !== deployment.address) throw new Error('VITE_PROOFPERKS_CONTRACT_ADDRESS does not match the confirmed Preprod deployment.');
